@@ -416,8 +416,6 @@ function Chalk({ userId }) {
               <button key={m} onClick={()=>setMode(m)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:mode===m?"rgba(255,255,255,.18)":"transparent",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>{l}</button>
             ))}
           </div>
-          {mode==="draw" && <button onClick={eraseLast} style={{background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",borderRadius:6,padding:"4px 10px",color:"#fff",fontSize:12,cursor:"pointer"}}>↩ Undo</button>}
-          <button onClick={clearAll} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",borderRadius:6,padding:"4px 10px",color:"rgba(255,255,255,.7)",fontSize:12,cursor:"pointer"}}>Clear</button>
         </div>
       </div>
       {mode==="draw" && (
@@ -439,7 +437,7 @@ function Chalk({ userId }) {
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
         {!loaded && <div style={{position:"absolute",inset:0,background:"#6b8c52",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner msg=""/></div>}
         {mode==="type" && (
-          <textarea value={text} onChange={e=>onTextChange(e.target.value)} placeholder="Write something on the chalkboard..."
+          <textarea value={text} onChange={e=>onTextChange(e.target.value)} placeholder=""
             style={{position:"absolute",inset:0,width:"100%",height:"100%",padding:"20px 24px",background:"transparent",border:"none",outline:"none",resize:"none",color:"#fff",fontSize:17,lineHeight:1.7,fontFamily:"'Nunito',sans-serif",boxSizing:"border-box"}}
           />
         )}
@@ -450,6 +448,22 @@ function Chalk({ userId }) {
             style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none"}}
           />
         )}
+        {/* Floating buttons — bottom right */}
+        <div style={{position:"absolute",bottom:16,right:16,display:"flex",gap:10,alignItems:"center"}}>
+          {mode==="draw" && (
+            <button onClick={eraseLast} style={{width:48,height:48,borderRadius:"50%",background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
+              <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.9"/>
+              </svg>
+            </button>
+          )}
+          <button onClick={clearAll} style={{width:48,height:48,borderRadius:"50%",background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(4px)"}}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 20H7L3 16l10-10 7 7-3.5 3.5"/>
+              <path d="M6.5 17.5l4-4"/>
+            </svg>
+          </button>
+        </div>
       </div>
     </div>
   );
