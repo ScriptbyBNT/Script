@@ -618,7 +618,26 @@ style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:form.type==
 )}
 {monthTxns.map(t=>{
 // Map old category names to new ones
-const CAT_MAP={"Grocery":"Food","Other Income":"Other Income","Other":"Other"};
+const CAT_MAP={
+"Grocery":"Food","grocery":"Food","food":"Food",
+"Store":"Store","store":"Store",
+"Electronics":"Electronics","electronics":"Electronics",
+"Car":"Car","car":"Car",
+"Mortgage/Rent":"Mortgage/Rent","Mortgage":"Mortgage/Rent","Rent":"Mortgage/Rent",
+"Loan":"Loan","loan":"Loan",
+"Work":"Work","work":"Work","Paycheck":"Work","paycheck":"Work","Salary":"Work",
+"Vacation":"Vacation","vacation":"Vacation",
+"ATM":"ATM","atm":"ATM",
+"Subscription":"Subscription","subscription":"Subscription",
+"Medical":"Medical","medical":"Medical","Health":"Medical","health":"Medical",
+"Utilities":"Utilities","utilities":"Utilities",
+"Real Estate":"Real Estate","Investment":"Investment","investment":"Investment",
+"Freelance":"Freelance","freelance":"Freelance",
+"Gift":"Gift","gift":"Gift",
+"Refund":"Refund","refund":"Refund",
+"Other Income":"Other Income","Income":"Other Income",
+"Other":"Other","other":"Other",
+};
 const catId = CAT_MAP[t.cat] || t.cat;
 const catObj = MCATS.find(c=>c.id===catId) || (t.type==="Income" ? MCATS_INCOME[MCATS_INCOME.length-1] : MCATS_EXPENSE[MCATS_EXPENSE.length-1]);
 const expanded=expandId===t.id, imgs=t.imgs||[];
@@ -639,6 +658,7 @@ return(
 <div style={{fontSize:10,color:expanded?"#fff":C.g,background:expanded?C.r:C.rl,borderRadius:20,padding:"2px 8px",fontWeight:700}}>{expanded?"▲ Less":"▼ More"}</div>
 </div>
 </div>
+
 {expanded && (
 <div style={{borderTop:"1px solid #f5f0ee",padding:"12px 15px 14px"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -658,7 +678,6 @@ return(
 <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={e=>{addImg(t.id,e.target.files[0]);e.target.value="";}}/>
 </label>
 </div>
-
 </div>
 )}
 </div>
@@ -685,6 +704,7 @@ const [docs, setDocs] = useState([]);
 const [apts, setApts] = useState([]);
 const [meds, setMeds] = useState([]);
 const [form, setForm] = useState({});
+
 const [open, setOpen] = useState(false);
 const [lightbox, setLightbox] = useState(null);
 const [expandId, setExpandId] = useState(null);
@@ -701,7 +721,6 @@ const addApt=()=>{if(!form.title) return;Sa([{id:Date.now(),...form,date:form.da
 const addMed=()=>{if(!form.name) return;Sm([...meds,{id:Date.now(),...form,imgs:[]}]);setForm({});setOpen(false);};
 const FI=({k,pl,span})=><input style={{...inp,...(span?{gridColumn:"span 2"}:{})}} value={form[k]||""} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={pl}/>;
 const addImg=(item,list,setList,saveKey,file)=>{
-
 if(!file) return;
 const r=new FileReader();
 r.onload=async e=>{const updated=list.map(x=>x.id===item.id?{...x,imgs:[...(x.imgs||[]),{id:Date.now(),data:e.target.result,name:file.name}]}:x);setList(updated);await dbSave(userId,saveKey,updated);};
@@ -728,6 +747,7 @@ const ImgStrip=({item,list,setList,saveKey})=>(
 );
 const HCard=({item,labelEl,children,onDel,list,setList,saveKey})=>{
 const cnt=(item.imgs||[]).length, expanded=expandId===item.id;
+
 return(
 <div style={{...card,flexDirection:"column",alignItems:"stretch",padding:0,overflow:"hidden"}}>
 <div style={{display:"flex",alignItems:"center",gap:12,padding:"13px 15px"}}>
@@ -746,7 +766,6 @@ if (!loaded) return <Spinner msg="Loading health data..."/>;
 return (
 <div style={{flex:1,display:"flex",flexDirection:"column",gap:12,minHeight:0}}>
 <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
-
 {[["docs","Doctors"],["apts","Appointments"],["meds","Medications"]].map(([id,l])=>(
 <button key={id} style={pill(tab===id)} onClick={()=>{setTab(id);setOpen(false);setForm({});setExpandId(null);}}>{l}</button>
 ))}
@@ -775,6 +794,7 @@ return (
 <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.93)",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:16}}>
 <img src={lightbox.imgs[lightbox.idx].data} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"80vh",borderRadius:12,objectFit:"contain",boxShadow:"0 8px 40px rgba(0,0,0,.6)"}}/>
 <div style={{display:"flex",gap:16,marginTop:16,alignItems:"center"}}>
+
 {lightbox.idx>0&&<button onClick={e=>{e.stopPropagation();setLightbox({...lightbox,idx:lightbox.idx-1});}} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",borderRadius:10,padding:"8px 22px",fontWeight:700,fontSize:18,cursor:"pointer"}}>‹</button>}
 <span style={{color:"rgba(255,255,255,.45)",fontSize:12}}>{lightbox.idx+1} / {lightbox.imgs.length}</span>
 {lightbox.idx<lightbox.imgs.length-1&&<button onClick={e=>{e.stopPropagation();setLightbox({...lightbox,idx:lightbox.idx+1});}} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",borderRadius:10,padding:"8px 22px",fontWeight:700,fontSize:18,cursor:"pointer"}}>›</button>}
@@ -793,7 +813,6 @@ const [newPass, setNewPass] = useState("");
 const [confPass, setConfPass] = useState("");
 const [msg, setMsg] = useState("");
 const [err, setErr] = useState("");
-
 const [loading, setLoading] = useState(false);
 const bg = dark ? "#1C1C1E" : "#fff";
 const bg2 = dark ? "#2C2C2E" : "#F5F0EE";
@@ -818,6 +837,7 @@ setLoading(false);
 const II = {width:"100%",padding:"12px 14px",borderRadius:11,border:"1.5px solid "+bdr,background:bg2,color:txt,fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
 return (
 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
+
 <div onClick={e=>e.stopPropagation()} style={{background:bg,borderRadius:"22px 22px 0 0",width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",paddingBottom:32,boxShadow:"0 -8px 40px rgba(0,0,0,.3)"}}>
 {/* Handle */}
 <div style={{display:"flex",justifyContent:"center",paddingTop:12,paddingBottom:4}}>
@@ -836,7 +856,6 @@ return (
 </div>
 <div style={{padding:"0 20px",display:"flex",flexDirection:"column",gap:14}}>
 {tab === "account" && <>
-
 <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
 <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>Signed in as</div>
 <div style={{fontSize:14,color:txt,fontWeight:600}}>{user.email}</div>
@@ -864,6 +883,7 @@ return (
 <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:dark?25:3,transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.2)"}}/>
 </button>
 </div>
+
 </div>
 <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
 <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Theme Preview</div>
@@ -881,7 +901,6 @@ return (
 </div>
 );
 }
-
 const NAV = [
 {id:"chalk", label:"Chalk", color:"#555", App:Chalk},
 {id:"logins", label:"Logins", color:"#2C5F9E", App:Logins},
@@ -906,6 +925,7 @@ return ()=>listener.subscription.unsubscribe();
 // Dark mode palette overrides
 const D = dark ? {
 pageBg: "#1C1C1E",
+
 headerBg:"#2C2C2E",
 border: "#3A3A3C",
 text: "#F2F2F7",
@@ -924,7 +944,6 @@ if (booting) return(
 <div style={{width:36,height:36,border:"3px solid rgba(255,255,255,.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto"}}/>
 <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 </div>
-
 </div>
 );
 if (!user) return <Login onLogin={setUser}/>;
@@ -949,6 +968,7 @@ input::placeholder, textarea::placeholder { color:#636366 !important; }
 <button onClick={()=>setShowMenu(!showMenu)} style={{width:32,height:32,borderRadius:9,background:cur?.color||C.r,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",border:"none",cursor:"pointer"}}>
 {(user.email?.[0]||"U").toUpperCase()}
 </button>
+
 {showMenu && (
 <div onClick={()=>setShowMenu(false)} style={{position:"fixed",inset:0,zIndex:100}} />
 )}
@@ -968,7 +988,6 @@ input::placeholder, textarea::placeholder { color:#636366 !important; }
 </button>
 ))}
 </div>
-
 )}
 </div>
 </div>
@@ -993,6 +1012,7 @@ return(<button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,padding:"
 </div>
 {/* Settings sheet */}
 {showSett && <Settings user={user} dark={dark} setDark={setDark} onClose={()=>setShowSett(false)}/>}
+
 </div>
 );
 }
