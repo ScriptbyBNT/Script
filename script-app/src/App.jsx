@@ -264,11 +264,13 @@ function Login({ onLogin }) {
                 </div>
               </div>
               {showDisc && (
-                <div style={{marginTop:12,padding:"12px 14px",background:"rgba(0,0,0,.3)",borderRadius:10}}>
-                  <div style={{fontWeight:800,color:"rgba(255,255,255,.9)",fontSize:12,marginBottom:6,letterSpacing:1,textTransform:"uppercase"}}>Disclaimer</div>
-                  Never store sensitive data on the internet unless you understand the potential risks.
-                  <br/><br/>
-                  We will not share your data voluntarily unless instructed to by government officials.
+                <div style={{marginTop:12,padding:"14px 16px",background:"rgba(0,0,0,.3)",borderRadius:10,color:"#fff",fontSize:12,lineHeight:1.7}}>
+                  <div style={{fontWeight:800,fontSize:13,marginBottom:10,letterSpacing:.5}}>Data & Privacy Disclaimer</div>
+                  <div style={{marginBottom:8}}><span style={{fontWeight:700}}>Data Security: </span>No internet-based system is 100% secure. While we take reasonable measures to protect your data, we cannot guarantee absolute security against data breaches, unauthorized access, or data loss. You assume full responsibility for the sensitivity of any information you choose to store in this application.</div>
+                  <div style={{marginBottom:8}}><span style={{fontWeight:700}}>Your Responsibility: </span>Do not store highly sensitive information such as Social Security numbers, bank account numbers, passwords to other services, or any data whose exposure could cause you significant harm.</div>
+                  <div style={{marginBottom:8}}><span style={{fontWeight:700}}>Data Sharing: </span>We will not voluntarily share, sell, or disclose your personal data to any third party. We may be required to disclose your data if compelled by a valid court order, subpoena, or request from a government or law enforcement agency.</div>
+                  <div style={{marginBottom:8}}><span style={{fontWeight:700}}>No Warranty: </span>This application is provided "as is" without warranty of any kind. We are not liable for any loss, damage, or harm resulting from the use of this application or any data loss that may occur.</div>
+                  <div style={{fontWeight:700}}>Acceptance: </div>By checking this box, you confirm that you have read, understood, and agree to this disclaimer.
                 </div>
               )}
             </div>
