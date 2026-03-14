@@ -535,9 +535,7 @@ const S = async d => { setTxns(d); await dbSave(userId,"money",d); };
 const add = ()=>{
 if(!form.desc.trim()||!form.amount) return;
 const dateStr = new Date().toLocaleDateString();
-// Strip emoji prefix from category if present (e.g. " Food" → "Food")
-const cleanCat = form.cat.replace(/^[\p{Emoji}\s]+/u,"").trim();
-S([{...form,cat:cleanCat,amount:parseFloat(form.amount),id:Date.now(),date:dateStr,monthKey:curKey},...txns]);
+S([{...form,amount:parseFloat(form.amount),id:Date.now(),date:dateStr,monthKey:curKey},...txns]);
 setForm({desc:"",amount:"",type:"Expense",cat:MCATS_EXPENSE[0].id,imgs:[]}); setOpen(false);
 };
 const addImg=(txnId,file)=>{
@@ -566,9 +564,9 @@ if (!loaded) return <Spinner msg="Loading transactions..."/>;
 return (
 <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,paddingBottom:8}}>
 {/* Month navigator */}
-
 <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",borderRadius:14,border:"1.5px solid "+C.bd,padding:"10px 14px",flexShrink:0}}>
 <button onClick={()=>keyIdx<allKeys.length-1&&setViewKey(allKeys[keyIdx+1])} disabled={keyIdx>=allKeys.length-1} style={{background:"none",border:"none",fontSize:20,cursor:keyIdx>=allKeys.length-1?"default":"pointer",color:keyIdx>=allKeys.length-1?"#ddd":C.k,padding:"0 4px"}}>‹</button>
+
 <div style={{textAlign:"center"}}>
 <div style={{fontFamily:"'Nunito',sans-serif",fontWeight:900,fontSize:17,color:"#1B6B35"}}>{monthLabel(safeKey)}</div>
 {!isCurrent && <div style={{fontSize:10,color:C.g,fontWeight:600,letterSpacing:1}}>PAST MONTH</div>}
@@ -602,7 +600,7 @@ style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:form.type==
 <input style={inp} value={form.desc} onChange={e=>setForm({...form,desc:e.target.value})} placeholder="Description"/>
 <input style={inp} type="number" value={form.amount} onChange={e=>setForm({...form,amount:e.target.value})} placeholder="Amount ($)"/>
 <select style={{...inp,gridColumn:"span 2"}} value={form.cat} onChange={e=>setForm({...form,cat:e.target.value})}>
-{(form.type==="Expense"?MCATS_EXPENSE:MCATS_INCOME).map(c=><option key={c.id}>{c.icon} {c.id}</option>)}
+{(form.type==="Expense"?MCATS_EXPENSE:MCATS_INCOME).map(c=><option key={c.id} value={c.id}>{c.icon} {c.id}</option>)}
 </select>
 </div>
 <div style={{display:"flex",gap:8}}>
@@ -611,15 +609,18 @@ style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:form.type==
 </div>
 </div>
 )}
-
 {/* Transaction list */}
+
 {monthTxns.length===0 && (
 <div style={{textAlign:"center",color:C.g,padding:40,fontSize:14}}>
 {isCurrent ? "No transactions yet this month." : "No transactions for this month."}
 </div>
 )}
 {monthTxns.map(t=>{
-const catObj=MCATS.find(c=>c.id===t.cat)||MCATS[MCATS.length-1];
+// Map old category names to new ones
+const CAT_MAP={"Grocery":"Food","Other Income":"Other Income","Other":"Other"};
+const catId = CAT_MAP[t.cat] || t.cat;
+const catObj = MCATS.find(c=>c.id===catId) || (t.type==="Income" ? MCATS_INCOME[MCATS_INCOME.length-1] : MCATS_EXPENSE[MCATS_EXPENSE.length-1]);
 const expanded=expandId===t.id, imgs=t.imgs||[];
 return(
 <div key={t.id} style={{background:"#fff",border:"1.5px solid "+C.bd,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 8px rgba(0,0,0,.05)",flexShrink:0}}>
@@ -657,8 +658,8 @@ return(
 <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={e=>{addImg(t.id,e.target.files[0]);e.target.value="";}}/>
 </label>
 </div>
-</div>
 
+</div>
 )}
 </div>
 );
@@ -700,8 +701,8 @@ const addApt=()=>{if(!form.title) return;Sa([{id:Date.now(),...form,date:form.da
 const addMed=()=>{if(!form.name) return;Sm([...meds,{id:Date.now(),...form,imgs:[]}]);setForm({});setOpen(false);};
 const FI=({k,pl,span})=><input style={{...inp,...(span?{gridColumn:"span 2"}:{})}} value={form[k]||""} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={pl}/>;
 const addImg=(item,list,setList,saveKey,file)=>{
-if(!file) return;
 
+if(!file) return;
 const r=new FileReader();
 r.onload=async e=>{const updated=list.map(x=>x.id===item.id?{...x,imgs:[...(x.imgs||[]),{id:Date.now(),data:e.target.result,name:file.name}]}:x);setList(updated);await dbSave(userId,saveKey,updated);};
 r.readAsDataURL(file);
@@ -745,8 +746,8 @@ if (!loaded) return <Spinner msg="Loading health data..."/>;
 return (
 <div style={{flex:1,display:"flex",flexDirection:"column",gap:12,minHeight:0}}>
 <div style={{display:"flex",gap:7,flexWrap:"wrap",alignItems:"center",flexShrink:0}}>
-{[["docs","Doctors"],["apts","Appointments"],["meds","Medications"]].map(([id,l])=>(
 
+{[["docs","Doctors"],["apts","Appointments"],["meds","Medications"]].map(([id,l])=>(
 <button key={id} style={pill(tab===id)} onClick={()=>{setTab(id);setOpen(false);setForm({});setExpandId(null);}}>{l}</button>
 ))}
 <button onClick={()=>setOpen(!open)} style={{...btn(),marginLeft:"auto",borderRadius:20,padding:"8px 18px"}}>+ Add</button>
@@ -792,8 +793,8 @@ const [newPass, setNewPass] = useState("");
 const [confPass, setConfPass] = useState("");
 const [msg, setMsg] = useState("");
 const [err, setErr] = useState("");
-const [loading, setLoading] = useState(false);
 
+const [loading, setLoading] = useState(false);
 const bg = dark ? "#1C1C1E" : "#fff";
 const bg2 = dark ? "#2C2C2E" : "#F5F0EE";
 const bdr = dark ? "#3A3A3C" : C.bd;
@@ -835,8 +836,8 @@ return (
 </div>
 <div style={{padding:"0 20px",display:"flex",flexDirection:"column",gap:14}}>
 {tab === "account" && <>
-<div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
 
+<div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
 <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>Signed in as</div>
 <div style={{fontSize:14,color:txt,fontWeight:600}}>{user.email}</div>
 </div>
@@ -880,8 +881,8 @@ return (
 </div>
 );
 }
-const NAV = [
 
+const NAV = [
 {id:"chalk", label:"Chalk", color:"#555", App:Chalk},
 {id:"logins", label:"Logins", color:"#2C5F9E", App:Logins},
 {id:"lists", label:"Lists", color:"#B85C00", App:Lists},
@@ -923,8 +924,8 @@ if (booting) return(
 <div style={{width:36,height:36,border:"3px solid rgba(255,255,255,.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto"}}/>
 <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
 </div>
-</div>
 
+</div>
 );
 if (!user) return <Login onLogin={setUser}/>;
 const cur=NAV.find(n=>n.id===active);
@@ -967,8 +968,8 @@ input::placeholder, textarea::placeholder { color:#636366 !important; }
 </button>
 ))}
 </div>
-)}
 
+)}
 </div>
 </div>
 </div>
