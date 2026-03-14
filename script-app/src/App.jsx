@@ -650,7 +650,7 @@ return(
 <div style={{flex:1,minWidth:0}}>
 <div style={{fontWeight:700,fontSize:14,color:C.k,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.desc}</div>
 <div style={{fontSize:11,color:C.g,marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-<span style={{background:catObj.color+"18",color:catObj.color,borderRadius:20,padding:"1px 8px",fontWeight:700,fontSize:10}}><span style={{fontFamily:"'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif"}}>{catObj.icon}</span> {catObj.id}</span>
+<span style={{background:t.type==="Income"?"#1B6B3522":C.r+"22",color:t.type==="Income"?"#1B6B35":C.r,borderRadius:20,padding:"1px 8px",fontWeight:700,fontSize:10}}>{catObj.id}</span>
 <span>{t.date}</span>
 {imgs.length>0&&<span style={{color:C.r,fontWeight:700}}> {imgs.length}</span>}
 </div>
