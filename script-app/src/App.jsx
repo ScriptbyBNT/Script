@@ -339,14 +339,26 @@ function Chalk({ userId }) {
     });
   },[paths,mode]);
 
+  // Prevent page scroll while drawing on canvas — must use non-passive listeners
+  useEffect(()=>{
+    const canvas = canvasRef.current;
+    if(!canvas || mode!=="draw") return;
+    const prevent = e => e.preventDefault();
+    canvas.addEventListener("touchstart", prevent, { passive: false });
+    canvas.addEventListener("touchmove",  prevent, { passive: false });
+    return ()=>{
+      canvas.removeEventListener("touchstart", prevent);
+      canvas.removeEventListener("touchmove",  prevent);
+    };
+  }, [mode]);
+
   const getPos = (e, canvas) => {
     const r = canvas.getBoundingClientRect();
-    const touch = e.touches?.[0] || e;
+    const touch = e.touches?.[0] || e.changedTouches?.[0] || e;
     return { x:(touch.clientX-r.left)*(canvas.width/r.width), y:(touch.clientY-r.top)*(canvas.height/r.height) };
   };
 
   const startDraw = e => {
-    e.preventDefault();
     const canvas = canvasRef.current;
     const pt = getPos(e, canvas);
     lastPt.current = pt;
@@ -355,7 +367,6 @@ function Chalk({ userId }) {
   };
 
   const moveDraw = e => {
-    e.preventDefault();
     if(!drawing) return;
     const canvas = canvasRef.current;
     const pt = getPos(e, canvas);
@@ -374,15 +385,20 @@ function Chalk({ userId }) {
   };
 
   const endDraw = e => {
-    e.preventDefault();
     setDrawing(false);
     save(text, paths);
   };
 
   const eraseLast = () => { const p=paths.slice(0,-1); setPaths(p); save(text,p); };
   const clearAll = () => {
-    if(mode==="type") { setText(""); save("",paths); }
-    else { setPaths([]); save(text,[]); }
+    setText("");
+    const p = [];
+    setPaths(p);
+    save("", p);
+    if(canvasRef.current) {
+      const ctx = canvasRef.current.getContext("2d");
+      ctx.clearRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+    }
   };
 
   const COLORS = ["#ffffff","#ffeb3b","#ff8a80","#80d8ff","#b9f6ca","#ea80fc","#ff6d00","#1de9b6"];
@@ -400,7 +416,6 @@ function Chalk({ userId }) {
               <button key={m} onClick={()=>setMode(m)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:mode===m?"rgba(255,255,255,.18)":"transparent",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>{l}</button>
             ))}
           </div>
-          <span style={{color:"rgba(255,255,255,.35)",fontSize:12}}>{saving?"💾 saving...":"✓ saved"}</span>
           {mode==="draw" && <button onClick={eraseLast} style={{background:"rgba(255,255,255,.12)",border:"1px solid rgba(255,255,255,.2)",borderRadius:6,padding:"4px 10px",color:"#fff",fontSize:12,cursor:"pointer"}}>↩ Undo</button>}
           <button onClick={clearAll} style={{background:"rgba(255,255,255,.08)",border:"1px solid rgba(255,255,255,.15)",borderRadius:6,padding:"4px 10px",color:"rgba(255,255,255,.7)",fontSize:12,cursor:"pointer"}}>Clear</button>
         </div>
@@ -432,7 +447,7 @@ function Chalk({ userId }) {
           <canvas ref={canvasRef} width={800} height={1200}
             onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
             onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
-            style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair"}}
+            style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none"}}
           />
         )}
       </div>
