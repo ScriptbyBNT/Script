@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 // ── SUPABASE ──
 const SUPA_URL = "https://neihlobcyssbvrsyptve.supabase.co";
-const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5laWxob2JjeXNzYnZyc3lwdHZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzI5MTI2MDUsImV4cCI6MjA0ODQ4ODYwNX0.your_key_here";
+const SUPA_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5laWhsb2JjeXNzYnZyc3lwdHZlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzMzMTE1NjEsImV4cCI6MjA4ODg4NzU2MX0.AEvReQgzGKUK6gw8hUlvBArpQrP-wRBn6b_9zTexiMs";
 const sb = createClient(SUPA_URL, SUPA_KEY);
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
