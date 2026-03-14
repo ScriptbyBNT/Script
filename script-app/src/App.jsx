@@ -639,26 +639,28 @@ const CAT_MAP={
 "Other":"Other","other":"Other",
 };
 const catId = CAT_MAP[t.cat] || t.cat;
-const catObj = MCATS.find(c=>c.id===catId) || (t.type==="Income" ? MCATS_INCOME[MCATS_INCOME.length-1] : MCATS_EXPENSE[MCATS_EXPENSE.length-1]);
+const catObj = MCATS.find(c=>c.id===catId) || MCATS_EXPENSE[MCATS_EXPENSE.length-1];
+const isIncome = t.type==="Income";
+const txColor = isIncome ? "#1B6B35" : C.r;
 const expanded=expandId===t.id, imgs=t.imgs||[];
 return(
-<div key={t.id} style={{background:"#fff",border:"1.5px solid "+C.bd,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 8px rgba(0,0,0,.05)",flexShrink:0}}>
+<div key={t.id} style={{background:"#fff",border:"1.5px solid "+txColor+"44",borderRadius:14,overflow:"hidden",boxShadow:"0 1px 8px rgba(0,0,0,.05)",flexShrink:0}}>
 <div onClick={()=>setExpandId(expanded?null:t.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 15px",cursor:"pointer"}}>
-<div style={{width:44,height:44,borderRadius:12,background:t.type==="Income"?"#1B6B35":C.r,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-<span style={{fontSize:11,fontWeight:900,color:"#fff",letterSpacing:0.5}}>{t.type==="Income"?"INC":"EXP"}</span>
+<div style={{width:44,height:44,borderRadius:12,background:txColor,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+<span style={{fontSize:11,fontWeight:900,color:"#fff",letterSpacing:0.5}}>{isIncome?"INC":"EXP"}</span>
 </div>
 <div style={{flex:1,minWidth:0}}>
 <div style={{fontWeight:700,fontSize:14,color:C.k,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.desc}</div>
 <div style={{fontSize:11,color:C.g,marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-<span style={{background:t.type==="Income"?"#1B6B3522":C.r+"22",color:t.type==="Income"?"#1B6B35":C.r,borderRadius:20,padding:"1px 8px",fontWeight:700,fontSize:10}}>{catObj.id}</span>
+<span style={{background:txColor+"22",color:txColor,borderRadius:20,padding:"1px 8px",fontWeight:700,fontSize:10}}>{catObj.id}</span>
 <span>{t.date}</span>
 {imgs.length>0&&<span style={{color:C.r,fontWeight:700}}> {imgs.length}</span>}
 </div>
 </div>
 <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
-<div style={{fontWeight:800,fontSize:15,color:t.type==="Income"?GRN:C.r}}>{(t.type==="Income"?"+":"-")+"$"+t.amount.toFixed(2)}</div>
-<div style={{fontSize:10,color:expanded?"#fff":C.g,background:expanded?C.r:C.rl,borderRadius:20,padding:"2px 8px",fontWeight:700}}>{expanded?"▲ Less":"▼ More"}</div>
 
+<div style={{fontWeight:800,fontSize:15,color:txColor}}>{(isIncome?"+":"-")+"$"+t.amount.toFixed(2)}</div>
+<div style={{fontSize:10,color:expanded?"#fff":C.g,background:expanded?txColor:txColor+"18",borderRadius:20,padding:"2px 8px",fontWeight:700}}>{expanded?"▲ Less":"▼ More"}</div>
 </div>
 </div>
 {expanded && (
@@ -702,9 +704,9 @@ return(
 }
 function Health({ userId }) {
 const [tab, setTab] = useState("docs");
+
 const [docs, setDocs] = useState([]);
 const [apts, setApts] = useState([]);
-
 const [meds, setMeds] = useState([]);
 const [form, setForm] = useState({});
 const [open, setOpen] = useState(false);
@@ -746,8 +748,8 @@ const ImgStrip=({item,list,setList,saveKey})=>(
 <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={e=>{addImg(item,list,setList,saveKey,e.target.files[0]);e.target.value="";}}/>
 </label>
 </div>
-);
 
+);
 const HCard=({item,labelEl,children,onDel,list,setList,saveKey})=>{
 const cnt=(item.imgs||[]).length, expanded=expandId===item.id;
 return(
@@ -792,9 +794,9 @@ return (
 {tab==="meds"&&meds.map(m=>(<HCard key={m.id} item={m} list={meds} setList={Sm} saveKey="meds" labelEl={<div style={{...lbl,fontSize:10}}>RX</div>} onDel={()=>Sm(meds.filter(x=>x.id!==m.id))}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{m.name}</div>{m.dosage&&<div style={{fontSize:12,color:C.r,fontWeight:600,marginTop:1}}>{m.dosage}</div>}{m.frequency&&<div style={{fontSize:12,color:C.g,marginTop:1}}>{m.frequency}</div>}{m.notes&&<div style={{fontSize:12,color:C.g,marginTop:1}}>{m.notes}</div>}</HCard>))}
 {((tab==="docs"&&!docs.length)||(tab==="apts"&&!apts.length)||(tab==="meds"&&!meds.length))&&<div style={{textAlign:"center",color:C.g,padding:40,fontSize:14}}>Nothing here yet. Tap + Add!</div>}
 </div>
+
 {lightbox&&(
 <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.93)",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:16}}>
-
 <img src={lightbox.imgs[lightbox.idx].data} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"80vh",borderRadius:12,objectFit:"contain",boxShadow:"0 8px 40px rgba(0,0,0,.6)"}}/>
 <div style={{display:"flex",gap:16,marginTop:16,alignItems:"center"}}>
 {lightbox.idx>0&&<button onClick={e=>{e.stopPropagation();setLightbox({...lightbox,idx:lightbox.idx-1});}} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",borderRadius:10,padding:"8px 22px",fontWeight:700,fontSize:18,cursor:"pointer"}}>‹</button>}
@@ -836,8 +838,8 @@ const { error } = await sb.auth.updateUser({ password: newPass });
 if (error) setErr(error.message); else { setMsg("Password updated!"); setNewPass(""); setConfPass(""); }
 setLoading(false);
 };
-const II = {width:"100%",padding:"12px 14px",borderRadius:11,border:"1.5px solid "+bdr,background:bg2,color:txt,fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
 
+const II = {width:"100%",padding:"12px 14px",borderRadius:11,border:"1.5px solid "+bdr,background:bg2,color:txt,fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
 return (
 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
 <div onClick={e=>e.stopPropagation()} style={{background:bg,borderRadius:"22px 22px 0 0",width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",paddingBottom:32,boxShadow:"0 -8px 40px rgba(0,0,0,.3)"}}>
@@ -881,9 +883,9 @@ return (
 <div style={{fontSize:14,fontWeight:700,color:txt}}>Dark Mode</div>
 <div style={{fontSize:12,color:sub,marginTop:2}}>Easy on the eyes at night</div>
 </div>
+
 <button onClick={()=>setDark(!dark)} style={{width:50,height:28,borderRadius:14,border:"none",cursor:"pointer",background:dark?C.r:bdr,position:"relative",transition:"background .2s"}}>
 <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:dark?25:3,transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.2)"}}/>
-
 </button>
 </div>
 </div>
@@ -924,8 +926,8 @@ sb.auth.getSession().then(({data})=>{ if(data?.session?.user) setUser(data.sessi
 const {data:listener}=sb.auth.onAuthStateChange((_,session)=>{ setUser(session?.user??null); });
 return ()=>listener.subscription.unsubscribe();
 },[]);
-// Dark mode palette overrides
 
+// Dark mode palette overrides
 const D = dark ? {
 pageBg: "#1C1C1E",
 headerBg:"#2C2C2E",
@@ -966,9 +968,9 @@ input::placeholder, textarea::placeholder { color:#636366 !important; }
 </div>
 <div style={{display:"flex",alignItems:"center",gap:10}}>
 <span style={{fontSize:12,color:D.sub,fontWeight:600}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
+
 <div style={{position:"relative"}}>
 <button onClick={()=>setShowMenu(!showMenu)} style={{width:32,height:32,borderRadius:9,background:cur?.color||C.r,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",border:"none",cursor:"pointer"}}>
-
 {(user.email?.[0]||"U").toUpperCase()}
 </button>
 {showMenu && (
@@ -1011,8 +1013,8 @@ return(<button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,padding:"
 <span style={{fontSize:9,fontWeight:800,color:on?"#fff":n.color,letterSpacing:.3,textTransform:"uppercase",lineHeight:1}}>{n.label}</span>
 </button>);
 })}
-</div>
 
+</div>
 {/* Settings sheet */}
 {showSett && <Settings user={user} dark={dark} setDark={setDark} onClose={()=>setShowSett(false)}/>}
 </div>
