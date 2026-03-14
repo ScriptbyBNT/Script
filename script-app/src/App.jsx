@@ -644,11 +644,13 @@ const expanded=expandId===t.id, imgs=t.imgs||[];
 return(
 <div key={t.id} style={{background:"#fff",border:"1.5px solid "+C.bd,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 8px rgba(0,0,0,.05)",flexShrink:0}}>
 <div onClick={()=>setExpandId(expanded?null:t.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 15px",cursor:"pointer"}}>
-<div style={{width:42,height:42,borderRadius:12,background:catObj.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:"#fff",flexShrink:0,letterSpacing:0}}>{catObj.icon}</div>
+<div style={{width:44,height:44,borderRadius:12,background:catObj.color+"22",border:"1.5px solid "+catObj.color+"44",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+<span style={{fontSize:24,lineHeight:1,fontFamily:"'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif"}}>{catObj.icon}</span>
+</div>
 <div style={{flex:1,minWidth:0}}>
 <div style={{fontWeight:700,fontSize:14,color:C.k,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.desc}</div>
 <div style={{fontSize:11,color:C.g,marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-<span style={{background:catObj.color+"18",color:catObj.color,borderRadius:20,padding:"1px 8px",fontWeight:700,fontSize:10}}>{catObj.icon} {catObj.id}</span>
+<span style={{background:catObj.color+"18",color:catObj.color,borderRadius:20,padding:"1px 8px",fontWeight:700,fontSize:10}}><span style={{fontFamily:"'Apple Color Emoji','Segoe UI Emoji','Noto Color Emoji',sans-serif"}}>{catObj.icon}</span> {catObj.id}</span>
 <span>{t.date}</span>
 {imgs.length>0&&<span style={{color:C.r,fontWeight:700}}> {imgs.length}</span>}
 </div>
@@ -656,9 +658,9 @@ return(
 <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4,flexShrink:0}}>
 <div style={{fontWeight:800,fontSize:15,color:t.type==="Income"?GRN:C.r}}>{(t.type==="Income"?"+":"-")+"$"+t.amount.toFixed(2)}</div>
 <div style={{fontSize:10,color:expanded?"#fff":C.g,background:expanded?C.r:C.rl,borderRadius:20,padding:"2px 8px",fontWeight:700}}>{expanded?"▲ Less":"▼ More"}</div>
-</div>
-</div>
 
+</div>
+</div>
 {expanded && (
 <div style={{borderTop:"1px solid #f5f0ee",padding:"12px 15px 14px"}}>
 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -702,9 +704,9 @@ function Health({ userId }) {
 const [tab, setTab] = useState("docs");
 const [docs, setDocs] = useState([]);
 const [apts, setApts] = useState([]);
+
 const [meds, setMeds] = useState([]);
 const [form, setForm] = useState({});
-
 const [open, setOpen] = useState(false);
 const [lightbox, setLightbox] = useState(null);
 const [expandId, setExpandId] = useState(null);
@@ -745,9 +747,9 @@ const ImgStrip=({item,list,setList,saveKey})=>(
 </label>
 </div>
 );
+
 const HCard=({item,labelEl,children,onDel,list,setList,saveKey})=>{
 const cnt=(item.imgs||[]).length, expanded=expandId===item.id;
-
 return(
 <div style={{...card,flexDirection:"column",alignItems:"stretch",padding:0,overflow:"hidden"}}>
 <div style={{display:"flex",alignItems:"center",gap:12,padding:"13px 15px"}}>
@@ -792,9 +794,9 @@ return (
 </div>
 {lightbox&&(
 <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.93)",zIndex:2000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:16}}>
+
 <img src={lightbox.imgs[lightbox.idx].data} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"80vh",borderRadius:12,objectFit:"contain",boxShadow:"0 8px 40px rgba(0,0,0,.6)"}}/>
 <div style={{display:"flex",gap:16,marginTop:16,alignItems:"center"}}>
-
 {lightbox.idx>0&&<button onClick={e=>{e.stopPropagation();setLightbox({...lightbox,idx:lightbox.idx-1});}} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",borderRadius:10,padding:"8px 22px",fontWeight:700,fontSize:18,cursor:"pointer"}}>‹</button>}
 <span style={{color:"rgba(255,255,255,.45)",fontSize:12}}>{lightbox.idx+1} / {lightbox.imgs.length}</span>
 {lightbox.idx<lightbox.imgs.length-1&&<button onClick={e=>{e.stopPropagation();setLightbox({...lightbox,idx:lightbox.idx+1});}} style={{background:"rgba(255,255,255,.15)",border:"none",color:"#fff",borderRadius:10,padding:"8px 22px",fontWeight:700,fontSize:18,cursor:"pointer"}}>›</button>}
@@ -835,9 +837,9 @@ if (error) setErr(error.message); else { setMsg("Password updated!"); setNewPass
 setLoading(false);
 };
 const II = {width:"100%",padding:"12px 14px",borderRadius:11,border:"1.5px solid "+bdr,background:bg2,color:txt,fontSize:14,fontFamily:"inherit",outline:"none",boxSizing:"border-box"};
+
 return (
 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:500,display:"flex",alignItems:"flex-end",justifyContent:"center"}} onClick={onClose}>
-
 <div onClick={e=>e.stopPropagation()} style={{background:bg,borderRadius:"22px 22px 0 0",width:"100%",maxWidth:480,maxHeight:"88vh",overflowY:"auto",paddingBottom:32,boxShadow:"0 -8px 40px rgba(0,0,0,.3)"}}>
 {/* Handle */}
 <div style={{display:"flex",justifyContent:"center",paddingTop:12,paddingBottom:4}}>
@@ -881,9 +883,9 @@ return (
 </div>
 <button onClick={()=>setDark(!dark)} style={{width:50,height:28,borderRadius:14,border:"none",cursor:"pointer",background:dark?C.r:bdr,position:"relative",transition:"background .2s"}}>
 <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:dark?25:3,transition:"left .2s",boxShadow:"0 1px 4px rgba(0,0,0,.2)"}}/>
+
 </button>
 </div>
-
 </div>
 <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
 <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Theme Preview</div>
@@ -923,9 +925,9 @@ const {data:listener}=sb.auth.onAuthStateChange((_,session)=>{ setUser(session?.
 return ()=>listener.subscription.unsubscribe();
 },[]);
 // Dark mode palette overrides
+
 const D = dark ? {
 pageBg: "#1C1C1E",
-
 headerBg:"#2C2C2E",
 border: "#3A3A3C",
 text: "#F2F2F7",
@@ -966,9 +968,9 @@ input::placeholder, textarea::placeholder { color:#636366 !important; }
 <span style={{fontSize:12,color:D.sub,fontWeight:600}}>{new Date().toLocaleDateString("en-US",{weekday:"short",month:"short",day:"numeric"})}</span>
 <div style={{position:"relative"}}>
 <button onClick={()=>setShowMenu(!showMenu)} style={{width:32,height:32,borderRadius:9,background:cur?.color||C.r,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:14,fontFamily:"'Nunito',sans-serif",border:"none",cursor:"pointer"}}>
+
 {(user.email?.[0]||"U").toUpperCase()}
 </button>
-
 {showMenu && (
 <div onClick={()=>setShowMenu(false)} style={{position:"fixed",inset:0,zIndex:100}} />
 )}
@@ -1010,9 +1012,9 @@ return(<button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,padding:"
 </button>);
 })}
 </div>
+
 {/* Settings sheet */}
 {showSett && <Settings user={user} dark={dark} setDark={setDark} onClose={()=>setShowSett(false)}/>}
-
 </div>
 );
 }
