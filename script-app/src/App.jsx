@@ -644,7 +644,7 @@ const expanded=expandId===t.id, imgs=t.imgs||[];
 return(
 <div key={t.id} style={{background:"#fff",border:"1.5px solid "+C.bd,borderRadius:14,overflow:"hidden",boxShadow:"0 1px 8px rgba(0,0,0,.05)",flexShrink:0}}>
 <div onClick={()=>setExpandId(expanded?null:t.id)} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 15px",cursor:"pointer"}}>
-<div style={{width:42,height:42,borderRadius:12,background:catObj.color+"18",display:"flex",alignItems:"center",justifyContent:"center",fontSize:22,flexShrink:0}}>{catObj.icon}</div>
+<div style={{width:42,height:42,borderRadius:12,background:catObj.color,display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:900,color:"#fff",flexShrink:0,letterSpacing:0}}>{catObj.icon}</div>
 <div style={{flex:1,minWidth:0}}>
 <div style={{fontWeight:700,fontSize:14,color:C.k,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{t.desc}</div>
 <div style={{fontSize:11,color:C.g,marginTop:2,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
