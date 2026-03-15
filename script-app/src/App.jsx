@@ -425,11 +425,11 @@ function Chalk({ userId, dark, userEmail }) {
           <canvas ref={canvasRef} width={800} height={1200}
             onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
             onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
-            style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none",background:"#6b8c52"}}
+            style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none",background:dark?"#1C2C1C":"#6b8c52"}}
           />
         )}
-        {showShare&&<ShareModal title="My Notes" onClose={()=>setShowShare(false)} onSend={async(toEmail)=>sendShared(userEmail,toEmail,"note","Chalk Notes",text)}/>}
-        {mode==="type"&&<button onClick={()=>setShowShare(true)} style={{position:"absolute",bottom:16,left:16,background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:24,padding:"10px 16px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",backdropFilter:"blur(4px)"}}>⬆ Share Note</button>}
+        {showShare&&<ShareModal title={mode==="draw"?"My Drawing":"My Notes"} onClose={()=>setShowShare(false)} onSend={async(toEmail)=>sendShared(userEmail,toEmail,"note",mode==="draw"?"Chalk Drawing":"Chalk Notes",mode==="draw"?{text,paths}:text)}/>}
+        <button onClick={()=>setShowShare(true)} style={{position:"absolute",bottom:16,left:16,background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:24,padding:"10px 16px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",backdropFilter:"blur(4px)"}}>⬆ Share</button>
         <div style={{position:"absolute",bottom:16,right:16,display:"flex",gap:10,alignItems:"center"}}>
           {mode==="draw"&&(
             <button onClick={eraseLast} style={{width:48,height:48,borderRadius:"50%",background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1272,11 +1272,22 @@ export default function Script() {
 
   const acceptShared = async (item) => {
     if(item.type==="note") {
-      // Append to chalk
+      // Append to chalk — handle both text-only and {text,paths} drawing shares
       const existing = await dbLoad(user.id,"chalk");
-      const existText = (existing?.text||"");
-      const newText = existText ? existText+"\n\n--- From "+item.from_email+" ---\n"+item.data : item.data;
-      await dbSave(user.id,"chalk",{text:newText,paths:existing?.paths||[]});
+      const existText = existing?.text||"";
+      const existPaths = existing?.paths||[];
+      const sharedData = item.data;
+      let newText, newPaths;
+      if(typeof sharedData === "object" && sharedData.paths) {
+        // Drawing share — append text and merge paths
+        newText = existText ? existText+"\n\n--- Drawing from "+item.from_email+" ---" : "--- Drawing from "+item.from_email+" ---";
+        newPaths = [...existPaths, ...sharedData.paths];
+      } else {
+        // Text share
+        newText = existText ? existText+"\n\n--- From "+item.from_email+" ---\n"+sharedData : sharedData;
+        newPaths = existPaths;
+      }
+      await dbSave(user.id,"chalk",{text:newText,paths:newPaths});
       setActive("chalk");
     } else if(item.type==="list") {
       // Add as new list
@@ -1363,7 +1374,7 @@ export default function Script() {
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
         <div style={{display:"flex"}}>
           {NAV.map(n=>{ const on=active===n.id; return(
-            <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:10,paddingBottom:10,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"background .15s"}}>
+            <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:7,paddingBottom:7,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"background .15s"}}>
               <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
               <span style={{fontSize:9,fontWeight:800,color:on?"#fff":n.color,letterSpacing:.3,textTransform:"uppercase"}}>{n.label}</span>
             </button>
