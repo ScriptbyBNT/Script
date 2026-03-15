@@ -122,11 +122,17 @@ async function deleteInboxItem(id) {
 
 // ── LOGIN ──
 // ── SHARE MODAL ──
-function ShareModal({ title, onSend, onClose }) {
+function ShareModal({ title, onSend, onClose, userId }) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState("idle");
   const [errMsg, setErrMsg] = useState("");
-  const [recents, setRecents] = useState(()=>{ try{ return JSON.parse(localStorage.getItem("script_recents")||"[]"); }catch(e){ return []; } });
+  const [recents, setRecents] = useState([]);
+
+  useEffect(()=>{
+    if(userId) {
+      dbLoad(userId,"share_recents").then(v=>{ if(v&&Array.isArray(v)) setRecents(v); else { try{ const ls=JSON.parse(localStorage.getItem("script_recents")||"[]"); setRecents(ls); }catch(e){} } });
+    } else { try{ const ls=JSON.parse(localStorage.getItem("script_recents")||"[]"); setRecents(ls); }catch(e){} }
+  },[userId]);
 
   const saveRecent = (em) => {
     const updated = [em, ...recents.filter(r=>r!==em)].slice(0,6);
@@ -144,7 +150,7 @@ function ShareModal({ title, onSend, onClose }) {
       setState("error");
       setTimeout(() => setState("idle"), 3000);
     } else {
-      saveRecent(addr);
+      await saveRecent(addr);
       setState("sent");
       setTimeout(() => { setState("idle"); onClose(); }, 2000);
     }
@@ -450,7 +456,7 @@ function Chalk({ userId, dark, userEmail }) {
             style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none",background:dark?"#1C2C1C":"#6b8c52"}}
           />
         )}
-        {showShare&&<ShareModal title={mode==="draw"?"My Drawing":"My Notes"} onClose={()=>setShowShare(false)} onSend={async(toEmail)=>sendShared(userEmail,toEmail,"note",mode==="draw"?"Chalk Drawing":"Chalk Notes",mode==="draw"?{text,paths}:text)}/>}
+        {showShare&&<ShareModal title={mode==="draw"?"My Drawing":"My Notes"} userId={userId} onClose={()=>setShowShare(false)} onSend={async(toEmail)=>sendShared(userEmail,toEmail,"note",mode==="draw"?"Chalk Drawing":"Chalk Notes",mode==="draw"?{text,paths}:text)}/>}
         <button onClick={()=>setShowShare(true)} style={{position:"absolute",bottom:16,left:16,background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:24,padding:"10px 16px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",backdropFilter:"blur(4px)"}}>⬆ Share</button>
         <div style={{position:"absolute",bottom:16,right:16,display:"flex",gap:10,alignItems:"center"}}>
           {mode==="draw"&&(
@@ -575,7 +581,7 @@ function Lists({ userId, userEmail }) {
         <button onClick={()=>setShowN(!showN)} style={{padding:"6px 12px",borderRadius:20,border:"1.5px dashed #E8D5D0",background:"#fff",color:C.g,fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>+ New</button>
         <button onClick={()=>setShowShare(true)} style={{padding:"6px 12px",borderRadius:20,border:"none",background:C.r,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>⬆ Share</button>
       </div>
-      {showShare&&<ShareModal title={al?.label||"List"} onClose={()=>setShowShare(false)} onSend={async(toEmail)=>{ const al2=listsRef.current.find(l=>l.id===active)||listsRef.current[0]; return await sendShared(userEmail,toEmail,"list",al2.label,al2.items); }}/>}
+      {showShare&&<ShareModal title={al?.label||"List"} userId={userId} onClose={()=>setShowShare(false)} onSend={async(toEmail)=>{ const al2=listsRef.current.find(l=>l.id===active)||listsRef.current[0]; return await sendShared(userEmail,toEmail,"list",al2.label,al2.items); }}/>}
       {showN&&(
         <div style={box}>
           <div style={{display:"flex",gap:8}}>
@@ -855,7 +861,7 @@ function Calendar({ userId, userEmail }) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         Share Calendar
       </button>
-      {showShareModal&&<ShareModal title="My Calendar" onClose={()=>setShowShareModal(false)} onSend={async(toEmail)=>{ return await sendShared(userEmail,toEmail,"calendar","Calendar",evtsRef.current); }}/>}
+      {showShareModal&&<ShareModal title="My Calendar" userId={userId} onClose={()=>setShowShareModal(false)} onSend={async(toEmail)=>{ return await sendShared(userEmail,toEmail,"calendar","Calendar",evtsRef.current); }}/>}
       {selKey?(
         <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:240}}>
           <div style={{background:C.r,borderRadius:10,padding:"6px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
@@ -1418,7 +1424,7 @@ export default function Script() {
         <App userId={user.id} dark={dark} userEmail={user.email||""}/>
       </div>
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
-        <div style={{display:"flex",paddingTop:14}}>
+        <div style={{display:"flex",paddingTop:22}}>
           {NAV.map(n=>{ const on=active===n.id; return(
             <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:2,paddingBottom:2,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"background .15s"}}>
               <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
@@ -1426,7 +1432,7 @@ export default function Script() {
             </button>
           ); })}
         </div>
-        <div style={{height:50,background:D.headerBg}}/>
+        <div style={{height:56,background:D.headerBg}}/>
       </div>
       {showInbox&&<InboxModal items={inbox} onAccept={acceptShared} onDismiss={async(id)=>{ await deleteInboxItem(id); setInbox(prev=>prev.filter(x=>x.id!==id)); }} onClose={()=>setShowInbox(false)}/>}
       {showSett&&<Settings user={user} dark={dark} setDark={setDark} onClose={()=>setShowSett(false)}/>}
