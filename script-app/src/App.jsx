@@ -804,17 +804,25 @@ function Calendar({ userId }) {
     setShareState("sharing");
     try {
       const id = "cal_" + userId.replace(/-/g,"").slice(0,12);
+      const email = (await sb.auth.getUser()).data?.user?.email || "";
       const { error } = await sb.from("shared_calendars").upsert({
         id, user_id: userId, data: evtsRef.current,
-        owner_email: (await sb.auth.getUser()).data?.user?.email || "",
+        owner_email: email,
         updated_at: new Date().toISOString(),
       }, { onConflict: "id" });
       if(error) throw error;
       const link = "https://script-sable.vercel.app/#share/" + id;
-      await navigator.clipboard.writeText(link);
-      setShareState("copied");
+      // iPhone: use native share sheet — clipboard fails after async on Safari
+      if(navigator.share) {
+        await navigator.share({ title: "My Script Calendar", url: link });
+        setShareState("copied");
+      } else {
+        await navigator.clipboard.writeText(link);
+        setShareState("copied");
+      }
       setTimeout(()=>setShareState("idle"), 3000);
     } catch(e) {
+      if(e?.name === "AbortError") { setShareState("idle"); return; }
       console.error(e);
       setShareState("error");
       setTimeout(()=>setShareState("idle"), 3000);
