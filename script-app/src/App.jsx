@@ -1296,6 +1296,7 @@ const NAV=[
 export default function Script() {
   const [user,setUser]=useState(null);
   const [active,setActive]=useState("chalk");
+  const [chalkKey,setChalkKey]=useState(0);
   const [showMenu,setShowMenu]=useState(false);
   const [showSett,setShowSett]=useState(false);
   const [dark,setDark]=useState(()=>{ try{ return localStorage.getItem("script_dark")==="1"; }catch(e){ return false; } });
@@ -1340,6 +1341,7 @@ export default function Script() {
         newPaths = existPaths;
       }
       await dbSave(user.id,"chalk",{text:newText,paths:newPaths});
+      setChalkKey(k=>k+1);
       setActive("chalk");
     } else if(item.type==="list") {
       // Add as new list
@@ -1421,7 +1423,7 @@ export default function Script() {
         <h1 style={{margin:0,fontSize:22,fontWeight:900,color:cur?.color||D.text,fontFamily:"'Nunito',sans-serif"}}>{cur?.label}</h1>
       </div>
       <div style={{flex:1,padding:"14px 16px",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-        <App userId={user.id} dark={dark} userEmail={user.email||""}/>
+        <App key={active==="chalk"?chalkKey:active} userId={user.id} dark={dark} userEmail={user.email||""}/>
       </div>
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
         <div style={{display:"flex",paddingTop:22}}>
