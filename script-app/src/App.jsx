@@ -452,7 +452,7 @@ function Chalk({ userId }) {
           <canvas ref={canvasRef} width={800} height={1200}
             onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
             onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
-            style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none"}}
+            style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none",background:"#6b8c52"}}
           />
         )}
         {/* Floating buttons — bottom right */}
@@ -845,7 +845,7 @@ function CalendarNote({ selKey, evtsRef, userId, onUpdate }) {
       value={val}
       onChange={onChange}
       placeholder="Notes for this day..."
-      style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:16,resize:"none",outline:"none",fontFamily:"inherit",background:"#fff",color:"#1C1C1E"}}
+      style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:16,resize:"none",outline:"none",fontFamily:"'Nunito',sans-serif",background:"#fff !important",color:"#1C1C1E !important",WebkitTextFillColor:"#1C1C1E"}}
     />
   );
 }
@@ -1501,7 +1501,7 @@ export default function Script() {
           })}
         </div>
         {/* Spacer below tabs for iPhone home bar */}
-        <div style={{height:34,background:D.headerBg}}/>
+        <div style={{height:44,background:D.headerBg}}/>
       </div>
 
       {/* Settings sheet */}
