@@ -526,6 +526,8 @@ function Lists({ userId, userEmail }) {
   const [nn,setNn]=useState("");
   const [loaded,setLoaded]=useState(false);
   const [showShare,setShowShare]=useState(false);
+  const [editItemId,setEditItemId]=useState(null);
+  const [editText,setEditText]=useState("");
   const listsRef=useRef(BASE_LISTS);
 
   useEffect(()=>{ dbLoad(userId,"lists").then(v=>{ if(v){ setLists(v); listsRef.current=v; } setLoaded(true); }); },[userId]);
@@ -533,6 +535,7 @@ function Lists({ userId, userEmail }) {
   const addItem=()=>{ if(!ni.trim()) return; const u=listsRef.current.map(l=>l.id===active?{...l,items:[...l.items,{id:Date.now(),text:ni,done:false}]}:l); S(u); setNi(""); };
   const toggle=id=>S(listsRef.current.map(l=>l.id===active?{...l,items:l.items.map(i=>i.id===id?{...i,done:!i.done}:i)}:l));
   const del=id=>S(listsRef.current.map(l=>l.id===active?{...l,items:l.items.filter(i=>i.id!==id)}:l));
+  const saveEdit=(id,text)=>{ if(!text.trim()) return; S(listsRef.current.map(l=>l.id===active?{...l,items:l.items.map(i=>i.id===id?{...i,text}:i)}:l)); setEditItemId(null); };
   const addCustomList=()=>{ if(!nn.trim()) return; const nl={id:"c"+Date.now(),label:nn,kind:"check",items:[]}; const u=[...listsRef.current,nl]; S(u); setActive(nl.id); setNn(""); setShowN(false); };
   const removeList=id=>{ if(active===id) setActive("todo"); S(listsRef.current.filter(x=>x.id!==id)); };
   const al=lists.find(l=>l.id===active)||lists[0];
@@ -571,8 +574,28 @@ function Lists({ userId, userEmail }) {
               <button onClick={()=>toggle(it.id)} style={{width:24,height:24,borderRadius:8,border:"2px solid "+(it.done?C.r:"#E8D5D0"),background:it.done?C.r:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 {it.done&&<span style={{color:"#fff",fontSize:13,fontWeight:900}}>✓</span>}
               </button>
-              <span style={{flex:1,fontSize:14,textDecoration:it.done?"line-through":"none",color:it.done?C.g:C.k,wordBreak:"break-word"}}>{it.text}</span>
-              <button onClick={()=>del(it.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:18,flexShrink:0}}>×</button>
+              {editItemId===it.id ? (
+                <input
+                  style={{...inp,flex:1,fontSize:14,padding:"4px 8px"}}
+                  value={editText}
+                  onChange={e=>setEditText(e.target.value)}
+                  onKeyDown={e=>{ if(e.key==="Enter") saveEdit(it.id,editText); if(e.key==="Escape") setEditItemId(null); }}
+                  autoFocus
+                />
+              ) : (
+                <span onDoubleClick={()=>{setEditItemId(it.id);setEditText(it.text);}} style={{flex:1,fontSize:14,textDecoration:it.done?"line-through":"none",color:it.done?C.g:C.k,wordBreak:"break-word"}}>{it.text}</span>
+              )}
+              {editItemId===it.id ? (
+                <div style={{display:"flex",gap:4,flexShrink:0}}>
+                  <button onClick={()=>saveEdit(it.id,editText)} style={{background:C.r,border:"none",borderRadius:6,padding:"4px 8px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>Save</button>
+                  <button onClick={()=>setEditItemId(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:18}}>×</button>
+                </div>
+              ) : (
+                <div style={{display:"flex",gap:4,flexShrink:0}}>
+                  <button onClick={()=>{setEditItemId(it.id);setEditText(it.text);}} style={{background:"none",border:"none",cursor:"pointer",color:C.g,fontSize:12,fontWeight:700}}>Edit</button>
+                  <button onClick={()=>del(it.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:18}}>×</button>
+                </div>
+              )}
             </div>
           ))}
           {al.items.length===0&&<div style={{textAlign:"center",color:C.g,padding:36,fontSize:14}}>Nothing here yet.</div>}
@@ -602,7 +625,7 @@ function CalendarNote({ selKey, evtsRef, userId, onUpdate }) {
 
   return(
     <textarea value={val} onChange={onChange} placeholder="Notes for this day..."
-      style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:16,resize:"none",outline:"none",fontFamily:"'Nunito',sans-serif",background:"#fff",color:"#1C1C1E"}}
+      style={{flex:1,minHeight:180,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:16,resize:"none",outline:"none",fontFamily:"'Nunito',sans-serif",background:"#fff",color:"#1C1C1E"}}
     ></textarea>
   );
 }
@@ -776,7 +799,7 @@ function Calendar({ userId, userEmail }) {
 
   if(!loaded) return <Spinner msg="Loading calendar..."/>;
   return(
-    <div style={{flex:1,display:"flex",flexDirection:"column",gap:12,minHeight:0}}>
+    <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:12,minHeight:0}}>
       <div style={{background:"#fff",borderRadius:14,border:"1.5px solid "+C.bd,overflow:"hidden",flexShrink:0}}>
         <div style={{background:"linear-gradient(135deg,#C8220A,#E03010)",padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <button onClick={()=>{setSelKey(null);setCal(new Date(y,m-1,1));}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
@@ -812,7 +835,7 @@ function Calendar({ userId, userEmail }) {
       </button>
       {showShareModal&&<ShareModal title="My Calendar" onClose={()=>setShowShareModal(false)} onSend={async(toEmail)=>{ return await sendShared(userEmail,toEmail,"calendar","Calendar",evtsRef.current); }}/>}
       {selKey?(
-        <div style={{display:"flex",flexDirection:"column",gap:8,flex:1,minHeight:0}}>
+        <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:240}}>
           <div style={{background:C.r,borderRadius:10,padding:"6px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
             <div style={{fontFamily:"'Nunito',sans-serif",fontSize:20,fontWeight:900,color:"#fff"}}>{selDay}</div>
             <div style={{color:"rgba(255,255,255,.7)",fontSize:12,fontWeight:700}}>{selMonth!=null?MONTHS[selMonth-1]+" "+selKey.split("-")[0]:""}</div>
@@ -1018,15 +1041,16 @@ function HealthHCard({item,labelEl,children,onDel,onEdit,list,setList,saveKey,us
         {labelEl}
         <div style={{flex:1,minWidth:0}}>{children}</div>
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,flexShrink:0}}>
-          <button onClick={()=>setExpandId(expanded?null:item.id)} style={{background:expanded?C.r:C.rl,border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",color:expanded?"#fff":C.r,fontWeight:700,fontSize:12}}>{expanded?"▲":"📎"}</button>
+          <div style={{display:"flex",gap:6,alignItems:"center"}}>
+            <button onClick={()=>onEdit&&onEdit(item)} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:12,fontWeight:700,padding:"2px 6px"}}>Edit</button>
+            <button onClick={()=>setExpandId(expanded?null:item.id)} style={{background:expanded?C.r:C.rl,border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",color:expanded?"#fff":C.r,fontWeight:700,fontSize:12}}>{expanded?"▲":"📎"}</button>
+          </div>
           <button onClick={onDel} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:16}}>×</button>
         </div>
       </div>
       {expanded&&(
         <div style={{padding:"0 15px 13px",borderTop:"1px solid #f5f0ee"}}>
-          <div style={{display:"flex",justifyContent:"flex-end",marginTop:8,marginBottom:4}}>
-            <button onClick={()=>onEdit&&onEdit(item)} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:12,fontWeight:700}}>Edit</button>
-          </div>
+
           <div style={{marginTop:4,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
             {(item.imgs||[]).map((img,i)=>(
               <div key={img.id} style={{position:"relative",borderRadius:8,overflow:"hidden",border:"1.5px solid #E8D5D0"}}>
@@ -1246,7 +1270,7 @@ export default function Script() {
   const [active,setActive]=useState("chalk");
   const [showMenu,setShowMenu]=useState(false);
   const [showSett,setShowSett]=useState(false);
-  const [dark,setDark]=useState(()=>localStorage.getItem("script_dark")==="1");
+  const [dark,setDark]=useState(()=>{ try{ return localStorage.getItem("script_dark")==="1"; }catch(e){ return false; } });
   const [booting,setBooting]=useState(true);
   const [inbox,setInbox]=useState([]);
   const [showInbox,setShowInbox]=useState(false);
@@ -1255,7 +1279,7 @@ export default function Script() {
   const hashShare=hash.match(/^#share\/(.+)$/);
   if(hashShare) return <SharedCalendarView shareId={hashShare[1]}/>;
 
-  useEffect(()=>{ localStorage.setItem("script_dark",dark?"1":"0"); },[dark]);
+  useEffect(()=>{ try{ localStorage.setItem("script_dark",dark?"1":"0"); }catch(e){} },[dark]);
   useEffect(()=>{
     sb.auth.getSession().then(({data})=>{ if(data?.session?.user) setUser(data.session.user); setBooting(false); });
     const {data:listener}=sb.auth.onAuthStateChange((_,session)=>{ setUser(session?.user??null); });
