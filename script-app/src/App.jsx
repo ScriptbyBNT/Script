@@ -175,11 +175,16 @@ function Spinner({msg="Loading..."}){
 }
 
 async function dbLoad(userId, section) {
-  const { data } = await sb.from("script_data").select("value").eq("user_id", userId).eq("section", section).single();
+  const { data, error } = await sb.from("script_data").select("value").eq("user_id", userId).eq("section", section).single();
+  if (error && error.code !== "PGRST116") console.error("dbLoad error:", section, error);
   return data ? data.value : null;
 }
 async function dbSave(userId, section, value) {
-  await sb.from("script_data").upsert({ user_id: userId, section, value, updated_at: new Date().toISOString() });
+  const { error } = await sb.from("script_data").upsert(
+    { user_id: userId, section, value, updated_at: new Date().toISOString() },
+    { onConflict: "user_id,section" }
+  );
+  if (error) console.error("dbSave error:", section, error);
 }
 
 function Login({ onLogin }) {
