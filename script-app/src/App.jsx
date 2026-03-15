@@ -631,16 +631,18 @@ function Lists({ userId }) {
   );
 }
 
-function CalendarNote({ selKey, evtsRef, userId }) {
-  // Isolated component — only mounts/unmounts when selKey changes via key prop
-  // Uses local state seeded once from evtsRef on mount
+function CalendarNote({ selKey, evtsRef, userId, onUpdate }) {
   const [val, setVal] = useState(()=> evtsRef.current[selKey] || "");
   const saveTimer = useRef(null);
 
   const onChange = e => {
     const v = e.target.value;
     setVal(v);
-    evtsRef.current = {...evtsRef.current, [selKey]: v};
+    // If empty, delete the key so dot disappears; otherwise set it
+    const updated = {...evtsRef.current};
+    if(v.trim()) { updated[selKey] = v; } else { delete updated[selKey]; }
+    evtsRef.current = updated;
+    onUpdate(updated); // sync Calendar's evts state so dot re-renders
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(()=>{ dbSave(userId,"cal", evtsRef.current); }, 800);
   };
@@ -687,7 +689,6 @@ function Calendar({ userId }) {
 
   const selParts = selKey ? selKey.split("-").map(Number) : null;
   const selMonth = selParts?.[1], selDay = selParts?.[2];
-
   if (!loaded) return <Spinner msg="Loading calendar..."/>;
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",gap:12,minHeight:0}}>
@@ -711,7 +712,7 @@ function Calendar({ userId }) {
               const key=makeKey(d,y,m);
               const isT=d===now.getDate()&&m===now.getMonth()&&y===now.getFullYear();
               const isS=selKey===key;
-              const has=!!(evts[key]||evtsRef.current[key]);
+              const has=!!(evts[key]?.trim());
               return(
                 <div key={d} onClick={()=>selectDay(d)} style={{borderRadius:8,padding:"6px 2px",textAlign:"center",cursor:"pointer",background:isS?C.r:isT?C.rl:"transparent",border:isT&&!isS?"1.5px solid "+C.r:"1.5px solid transparent"}}>
                   <div style={{fontSize:13,fontWeight:isT||isS?800:400,color:isS?"#fff":isT?C.r:C.k}}>{d}</div>
@@ -730,7 +731,7 @@ function Calendar({ userId }) {
               <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{selDay}</div>
             </div>
           </div>
-          <CalendarNote key={selKey} selKey={selKey} evtsRef={evtsRef} userId={userId}/>
+          <CalendarNote key={selKey} selKey={selKey} evtsRef={evtsRef} userId={userId} onUpdate={updated=>setEvts({...updated})}/>
         </div>
       ) : (
         <div style={{textAlign:"center",color:C.g,padding:24,fontSize:14}}>Tap a day to add notes</div>
