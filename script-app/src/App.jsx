@@ -592,7 +592,7 @@ function Lists({ userId }) {
         {lists.map(l=>(
           <button key={l.id} style={{...pill(active===l.id),display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}} onClick={()=>setActive(l.id)}>
             {l.label}
-            {!BASE_LISTS.some(b=>b.id===l.id) && (
+            {l.id !== "todo" && (
               <span onClick={e=>{e.stopPropagation();removeList(l.id);}} style={{opacity:.6,fontSize:14,marginLeft:2}}>×</span>
             )}
           </button>
@@ -637,13 +637,43 @@ function Calendar({ userId }) {
   const [sel, setSel] = useState(null);
   const [note, setNote] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const evtsRef = useRef({});
+  const selRef = useRef(null);
+  const calRef = useRef(null);
+  const saveTimer = useRef(null);
   const now = new Date();
 
-  useEffect(()=>{ dbLoad(userId,"cal").then(v=>{ if(v) setEvts(v); setLoaded(true); }); },[userId]);
-  const S = async d => { setEvts(d); await dbSave(userId,"cal",d); };
+  useEffect(()=>{ dbLoad(userId,"cal").then(v=>{ const d=v||{}; setEvts(d); evtsRef.current=d; setLoaded(true); }); },[userId]);
+
   const y=cal.getFullYear(), m=cal.getMonth();
   const dim=new Date(y,m+1,0).getDate(), fd=new Date(y,m,1).getDay();
-  const dk=d=>y+"-"+(m+1)+"-"+d;
+  const dk=(day,mo=m,yr=y)=>yr+"-"+(mo+1)+"-"+day;
+
+  // Auto-save note after typing stops
+  const onNoteChange = val => {
+    setNote(val);
+    const key = dk(selRef.current, calRef.current?.getMonth()??m, calRef.current?.getFullYear()??y);
+    const updated = {...evtsRef.current, [key]: val};
+    evtsRef.current = updated;
+    setEvts(updated);
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(()=>{ dbSave(userId,"cal",updated); }, 800);
+  };
+
+  const selectDay = d => {
+    // Save current note immediately before switching
+    if(selRef.current !== null) {
+      clearTimeout(saveTimer.current);
+      const key = dk(selRef.current, calRef.current?.getMonth()??m, calRef.current?.getFullYear()??y);
+      const updated = {...evtsRef.current};
+      evtsRef.current = updated;
+      dbSave(userId,"cal",updated);
+    }
+    selRef.current = d;
+    calRef.current = cal;
+    setSel(d);
+    setNote(evtsRef.current[dk(d)]||"");
+  };
 
   if (!loaded) return <Spinner msg="Loading calendar..."/>;
   return (
@@ -666,7 +696,7 @@ function Calendar({ userId }) {
             {Array(dim).fill(null).map((_,i)=>{
               const d=i+1,isT=d===now.getDate()&&m===now.getMonth()&&y===now.getFullYear(),isS=sel===d,has=!!evts[dk(d)];
               return(
-                <div key={d} onClick={()=>{setSel(d);setNote(evts[dk(d)]||"");}} style={{borderRadius:8,padding:"6px 2px",textAlign:"center",cursor:"pointer",background:isS?C.r:isT?C.rl:"transparent",border:isT&&!isS?"1.5px solid "+C.r:"1.5px solid transparent"}}>
+                <div key={d} onClick={()=>selectDay(d)} style={{borderRadius:8,padding:"6px 2px",textAlign:"center",cursor:"pointer",background:isS?C.r:isT?C.rl:"transparent",border:isT&&!isS?"1.5px solid "+C.r:"1.5px solid transparent"}}>
                   <div style={{fontSize:13,fontWeight:isT||isS?800:400,color:isS?"#fff":isT?C.r:C.k}}>{d}</div>
                   {has&&<div style={{width:5,height:5,borderRadius:"50%",background:isS?"#fff":C.r,margin:"2px auto 0"}}/>}
                 </div>
@@ -677,15 +707,14 @@ function Calendar({ userId }) {
       </div>
       {sel ? (
         <div style={{display:"flex",flexDirection:"column",gap:10,flex:1,minHeight:0}}>
-          <div style={{background:C.r,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+          <div style={{background:C.r,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",flexShrink:0}}>
             <div>
               <div style={{color:"rgba(255,255,255,.6)",fontSize:11,letterSpacing:1}}>{MONTHS[m].toUpperCase()}</div>
               <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{sel}</div>
             </div>
-            <button onClick={()=>S({...evts,[dk(sel)]:note})} style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:10,padding:"10px 18px",color:"#fff",fontWeight:700,fontSize:14,cursor:"pointer"}}>Save</button>
           </div>
-          <textarea value={note} onChange={e=>setNote(e.target.value)} placeholder="Notes for this day..."
-            style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid "+C.bd,fontSize:14,resize:"none",outline:"none",fontFamily:"inherit",background:"#fff",color:C.k}}
+          <textarea value={note} onChange={e=>onNoteChange(e.target.value)} placeholder="Notes for this day..."
+            style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid "+C.bd,fontSize:16,resize:"none",outline:"none",fontFamily:"inherit",background:"#fff",color:C.k}}
           />
         </div>
       ) : (
@@ -889,6 +918,59 @@ function Money({ userId }) {
   );
 }
 
+function HealthFI({k,pl,span,form,setForm}) {
+  return <input style={{...inp,...(span?{gridColumn:"span 2"}:{})}} value={form[k]||""} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))} placeholder={pl}/>;
+}
+
+function HealthHCard({item,labelEl,children,onDel,list,setList,saveKey,userId,expandId,setExpandId,setLightbox}) {
+  const expanded=expandId===item.id;
+
+  const addImg=(file)=>{
+    if(!file) return;
+    const r=new FileReader();
+    r.onload=async e=>{
+      const updated=list.map(x=>x.id===item.id?{...x,imgs:[...(x.imgs||[]),{id:Date.now(),data:e.target.result,name:file.name}]}:x);
+      setList(updated); await dbSave(userId,saveKey,updated);
+    };
+    r.readAsDataURL(file);
+  };
+
+  const removeImg=async(imgId)=>{
+    const updated=list.map(x=>x.id===item.id?{...x,imgs:(x.imgs||[]).filter(i=>i.id!==imgId)}:x);
+    setList(updated); await dbSave(userId,saveKey,updated);
+  };
+
+  return(
+    <div style={{...card,flexDirection:"column",alignItems:"stretch",padding:0,overflow:"hidden"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,padding:"13px 15px"}}>
+        {labelEl}
+        <div style={{flex:1,minWidth:0}}>{children}</div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,flexShrink:0}}>
+          <button onClick={()=>setExpandId(expanded?null:item.id)} style={{background:expanded?C.r:C.rl,border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",color:expanded?"#fff":C.r,fontWeight:700,fontSize:12}}>{expanded?"▲":"📎"}</button>
+          <button onClick={onDel} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:16}}>×</button>
+        </div>
+      </div>
+      {expanded&&(
+        <div style={{padding:"0 15px 13px",borderTop:"1px solid #f5f0ee"}}>
+          <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+            {(item.imgs||[]).map((img,i)=>(
+              <div key={img.id} style={{position:"relative",borderRadius:8,overflow:"hidden",border:"1.5px solid #E8D5D0"}}>
+                <img src={img.data} alt={img.name} onClick={()=>setLightbox({imgs:item.imgs,idx:i})} style={{width:64,height:64,objectFit:"cover",cursor:"pointer",display:"block"}}/>
+                <button onClick={()=>removeImg(img.id)} style={{position:"absolute",top:2,right:2,background:"rgba(0,0,0,.6)",border:"none",borderRadius:"50%",width:16,height:16,cursor:"pointer",color:"#fff",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+              </div>
+            ))}
+            <label style={{width:64,height:64,borderRadius:8,border:"1.5px dashed "+C.bd,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",background:"#fafafa"}}>
+              <span style={{fontSize:20,color:C.g,lineHeight:1}}>+</span>
+              <span style={{fontSize:9,color:C.g,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>Add</span>
+              <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={e=>addImg(e.target.files[0])}/>
+            </label>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Health({ userId }) {
   const [tab, setTab] = useState("docs");
   const [docs, setDocs] = useState([]);
@@ -912,52 +994,7 @@ function Health({ userId }) {
   const addApt=()=>{if(!form.title) return;Sa([{id:Date.now(),...form,date:form.date||new Date().toLocaleDateString()},...apts]);setForm({});setOpen(false);};
   const addMed=()=>{if(!form.name) return;Sm([...meds,{id:Date.now(),...form,imgs:[]}]);setForm({});setOpen(false);};
 
-  const FI=({k,pl,span})=><input style={{...inp,...(span?{gridColumn:"span 2"}:{})}} value={form[k]||""} onChange={e=>setForm({...form,[k]:e.target.value})} placeholder={pl}/>;
-
-  const addImg=(item,list,setList,saveKey,file)=>{
-    if(!file) return;
-    const r=new FileReader();
-    r.onload=async e=>{const updated=list.map(x=>x.id===item.id?{...x,imgs:[...(x.imgs||[]),{id:Date.now(),data:e.target.result,name:file.name}]}:x);setList(updated);await dbSave(userId,saveKey,updated);};
-    r.readAsDataURL(file);
-  };
-
-  const removeImg=async(itemId,imgId,list,setList,saveKey)=>{
-    const updated=list.map(x=>x.id===itemId?{...x,imgs:(x.imgs||[]).filter(i=>i.id!==imgId)}:x);
-    setList(updated);await dbSave(userId,saveKey,updated);
-  };
-
-  const ImgStrip=({item,list,setList,saveKey})=>(
-    <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-      {(item.imgs||[]).map((img,i)=>(
-        <div key={img.id} style={{position:"relative",borderRadius:8,overflow:"hidden",border:"1.5px solid #E8D5D0"}}>
-          <img src={img.data} alt={img.name} onClick={()=>setLightbox({imgs:item.imgs,idx:i})} style={{width:64,height:64,objectFit:"cover",cursor:"pointer",display:"block"}}/>
-          <button onClick={()=>removeImg(item.id,img.id,list,setList,saveKey)} style={{position:"absolute",top:2,right:2,background:"rgba(0,0,0,.6)",border:"none",borderRadius:"50%",width:16,height:16,cursor:"pointer",color:"#fff",fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-        </div>
-      ))}
-      <label style={{width:64,height:64,borderRadius:8,border:"1.5px dashed "+C.bd,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",cursor:"pointer",background:"#fafafa"}}>
-        <span style={{fontSize:20,color:C.g,lineHeight:1}}>+</span>
-        <span style={{fontSize:9,color:C.g,fontWeight:700,textTransform:"uppercase",letterSpacing:.5}}>Add</span>
-        <input type="file" accept="image/*,application/pdf" style={{display:"none"}} onChange={e=>addImg(item,list,setList,saveKey,e.target.files[0])}/>
-      </label>
-    </div>
-  );
-
-  const HCard=({item,labelEl,children,onDel,list,setList,saveKey})=>{
-    const expanded=expandId===item.id;
-    return(
-      <div style={{...card,flexDirection:"column",alignItems:"stretch",padding:0,overflow:"hidden"}}>
-        <div style={{display:"flex",alignItems:"center",gap:12,padding:"13px 15px"}}>
-          {labelEl}
-          <div style={{flex:1,minWidth:0}}>{children}</div>
-          <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:5,flexShrink:0}}>
-            <button onClick={()=>setExpandId(expanded?null:item.id)} style={{background:expanded?C.r:C.rl,border:"none",borderRadius:8,padding:"5px 10px",cursor:"pointer",color:expanded?"#fff":C.r,fontWeight:700,fontSize:12}}>{expanded?"▲":"📎"}</button>
-            <button onClick={onDel} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:16}}>×</button>
-          </div>
-        </div>
-        {expanded&&(<div style={{padding:"0 15px 13px",borderTop:"1px solid #f5f0ee"}}><ImgStrip item={item} list={list} setList={setList} saveKey={saveKey}/></div>)}
-      </div>
-    );
-  };
+  // ImgStrip and HCard are now top-level components (HealthHCard, above)
 
   if (!loaded) return <Spinner msg="Loading health data..."/>;
   return (
@@ -971,9 +1008,9 @@ function Health({ userId }) {
       {open&&(
         <div style={box}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
-            {tab==="docs"&&<><FI k="name" pl="Doctor Name"/><FI k="specialty" pl="Specialty"/><FI k="phone" pl="Phone"/><FI k="address" pl="Address"/><FI k="notes" pl="Notes" span/></>}
-            {tab==="apts"&&<><FI k="title" pl="Appointment"/><FI k="doctor" pl="Doctor"/><FI k="date" pl="Date"/><FI k="location" pl="Location"/><FI k="notes" pl="Notes" span/></>}
-            {tab==="meds"&&<><FI k="name" pl="Medication"/><FI k="dosage" pl="Dosage"/><FI k="frequency" pl="Frequency"/><FI k="prescriber" pl="Prescriber"/><FI k="notes" pl="Notes" span/></>}
+            {tab==="docs"&&<><HealthFI k="name" pl="Doctor Name" form={form} setForm={setForm}/><HealthFI k="specialty" pl="Specialty" form={form} setForm={setForm}/><HealthFI k="phone" pl="Phone" form={form} setForm={setForm}/><HealthFI k="address" pl="Address" form={form} setForm={setForm}/><HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/></>}
+            {tab==="apts"&&<><HealthFI k="title" pl="Appointment" form={form} setForm={setForm}/><HealthFI k="doctor" pl="Doctor" form={form} setForm={setForm}/><HealthFI k="date" pl="Date" form={form} setForm={setForm}/><HealthFI k="location" pl="Location" form={form} setForm={setForm}/><HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/></>}
+            {tab==="meds"&&<><HealthFI k="name" pl="Medication" form={form} setForm={setForm}/><HealthFI k="dosage" pl="Dosage" form={form} setForm={setForm}/><HealthFI k="frequency" pl="Frequency" form={form} setForm={setForm}/><HealthFI k="prescriber" pl="Prescriber" form={form} setForm={setForm}/><HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/></>}
           </div>
           <div style={{display:"flex",gap:8}}>
             <button onClick={tab==="docs"?addDoc:tab==="apts"?addApt:addMed} style={{...btn(),flex:1}}>Save</button>
@@ -982,9 +1019,9 @@ function Health({ userId }) {
         </div>
       )}
       <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
-        {tab==="docs"&&docs.map(d=>(<HCard key={d.id} item={d} list={docs} setList={Sd} saveKey="docs" onDel={()=>Sd(docs.filter(x=>x.id!==d.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#FDE8F0",color:"#AD1457"}}>{d.name?.[0]?.toUpperCase()||"D"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{d.name}</div><div style={{fontSize:12,color:C.g}}>{d.specialty}{d.phone?` • ${d.phone}`:""}</div></HCard>))}
-        {tab==="apts"&&apts.map(a=>(<HCard key={a.id} item={a} list={apts} setList={Sa} saveKey="apts" onDel={()=>Sa(apts.filter(x=>x.id!==a.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#E8F4FD",color:"#0277BD"}}>{a.title?.[0]?.toUpperCase()||"A"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{a.title}</div><div style={{fontSize:12,color:C.g}}>{a.date}{a.doctor?` • ${a.doctor}`:""}</div></HCard>))}
-        {tab==="meds"&&meds.map(m=>(<HCard key={m.id} item={m} list={meds} setList={Sm} saveKey="meds" onDel={()=>Sm(meds.filter(x=>x.id!==m.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#E8F8F0",color:"#1B5E20"}}>{m.name?.[0]?.toUpperCase()||"M"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{m.name}</div><div style={{fontSize:12,color:C.g}}>{m.dosage}{m.frequency?` • ${m.frequency}`:""}</div></HCard>))}
+        {tab==="docs"&&docs.map(d=>(<HealthHCard key={d.id} item={d} list={docs} setList={Sd} saveKey="docs" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} onDel={()=>Sd(docs.filter(x=>x.id!==d.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#FDE8F0",color:"#AD1457"}}>{d.name?.[0]?.toUpperCase()||"D"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{d.name}</div><div style={{fontSize:12,color:C.g}}>{d.specialty}{d.phone?` • ${d.phone}`:""}</div></HealthHCard>))}
+        {tab==="apts"&&apts.map(a=>(<HealthHCard key={a.id} item={a} list={apts} setList={Sa} saveKey="apts" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} onDel={()=>Sa(apts.filter(x=>x.id!==a.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#E8F4FD",color:"#0277BD"}}>{a.title?.[0]?.toUpperCase()||"A"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{a.title}</div><div style={{fontSize:12,color:C.g}}>{a.date}{a.doctor?` • ${a.doctor}`:""}</div></HealthHCard>))}
+        {tab==="meds"&&meds.map(m=>(<HealthHCard key={m.id} item={m} list={meds} setList={Sm} saveKey="meds" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} onDel={()=>Sm(meds.filter(x=>x.id!==m.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#E8F8F0",color:"#1B5E20"}}>{m.name?.[0]?.toUpperCase()||"M"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{m.name}</div><div style={{fontSize:12,color:C.g}}>{m.dosage}{m.frequency?` • ${m.frequency}`:""}</div></HealthHCard>))}
         {((tab==="docs"&&!docs.length)||(tab==="apts"&&!apts.length)||(tab==="meds"&&!meds.length))&&<div style={{textAlign:"center",color:C.g,padding:40,fontSize:14}}>Nothing here yet.</div>}
       </div>
       {lightbox&&(
