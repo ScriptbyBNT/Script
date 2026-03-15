@@ -549,20 +549,41 @@ function Lists({ userId }) {
   const [showN, setShowN] = useState(false);
   const [nn, setNn] = useState("");
   const [loaded, setLoaded] = useState(false);
+  const listsRef = useRef(lists);
+  useEffect(()=>{ listsRef.current = lists; }, [lists]);
 
-  useEffect(()=>{ dbLoad(userId,"lists").then(v=>{ if(v) setLists(v); setLoaded(true); }); },[userId]);
-  const S = async d => { setLists(d); await dbSave(userId,"lists",d); };
+  useEffect(()=>{ dbLoad(userId,"lists").then(v=>{ if(v) { setLists(v); listsRef.current=v; } setLoaded(true); }); },[userId]);
+
+  const S = async d => { setLists(d); listsRef.current=d; await dbSave(userId,"lists",d); };
+
+  const addItem = ()=>{
+    if(!ni.trim()) return;
+    const updated = listsRef.current.map(l=>l.id===active?{...l,items:[...l.items,{id:Date.now(),text:ni,done:false}]}:l);
+    S(updated); setNi("");
+  };
+  const toggle = id=>{
+    const updated = listsRef.current.map(l=>l.id===active?{...l,items:l.items.map(i=>i.id===id?{...i,done:!i.done}:i)}:l);
+    S(updated);
+  };
+  const del = id=>{
+    const updated = listsRef.current.map(l=>l.id===active?{...l,items:l.items.filter(i=>i.id!==id)}:l);
+    S(updated);
+  };
+  const addCustomList = ()=>{
+    if(!nn.trim()) return;
+    const nl={id:"c"+Date.now(),label:nn,kind:"check",items:[]};
+    const updated=[...listsRef.current,nl];
+    S(updated); setActive(nl.id); setNn(""); setShowN(false);
+  };
+  const removeList = id=>{ if(active===id) setActive("todo"); S(listsRef.current.filter(x=>x.id!==id)); };
+
   const al = lists.find(l=>l.id===active)||lists[0];
-  const addItem = ()=>{ if(!ni.trim()) return; S(lists.map(l=>l.id===active?{...l,items:[...l.items,{id:Date.now(),text:ni,done:false}]}:l)); setNi(""); };
-  const toggle = id=>S(lists.map(l=>l.id===active?{...l,items:l.items.map(i=>i.id===id?{...i,done:!i.done}:i)}:l));
-  const del = id=>S(lists.map(l=>l.id===active?{...l,items:l.items.filter(i=>i.id!==id)}:l));
-  const addCustomList = ()=>{ if(!nn.trim()) return; const nl={id:"c"+Date.now(),label:nn,kind:"check",items:[]}; S([...lists,nl]); setActive(nl.id); setNn(""); setShowN(false); };
-  const removeList = id=>{ if(active===id) setActive("todo"); S(lists.filter(x=>x.id!==id)); };
 
   if (!loaded) return <Spinner msg="Loading lists..."/>;
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",gap:12,minHeight:0}}>
-      <div style={{display:"flex",gap:5,overflowX:"auto",paddingBottom:3,flexShrink:0,alignItems:"center"}}>
+      {/* Tab row — wraps so it never pushes content off screen */}
+      <div style={{display:"flex",gap:5,flexWrap:"wrap",flexShrink:0,alignItems:"center"}}>
         {lists.map(l=>(
           <button key={l.id} style={{...pill(active===l.id),display:"flex",alignItems:"center",gap:5,whiteSpace:"nowrap"}} onClick={()=>setActive(l.id)}>
             {l.label}
@@ -583,18 +604,19 @@ function Lists({ userId }) {
         </div>
       )}
       <div style={{flex:1,display:"flex",flexDirection:"column",gap:10,minHeight:0}}>
+        {/* Add item row — fixed at top, always visible */}
         <div style={{display:"flex",gap:9,flexShrink:0}}>
-          <input style={{...inp,flex:1}} value={ni} onChange={e=>setNi(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addItem()} placeholder="Add item..."/>
-          <button onClick={addItem} style={{...btn(),padding:"10px 18px",fontSize:18}}>+</button>
+          <input style={{...inp,flex:1,minWidth:0}} value={ni} onChange={e=>setNi(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addItem()} placeholder="Add item..."/>
+          <button onClick={addItem} style={{...btn(),padding:"10px 18px",fontSize:18,flexShrink:0}}>+</button>
         </div>
         <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
           {al.items.map(it=>(
-            <div key={it.id} style={{display:"flex",alignItems:"center",gap:11,padding:"12px 14px",background:"#fff",borderRadius:12,border:"1.5px solid #E8D5D0"}}>
+            <div key={it.id} style={{display:"flex",alignItems:"center",gap:11,padding:"12px 14px",background:"#fff",borderRadius:12,border:"1.5px solid #E8D5D0",flexShrink:0}}>
               <button onClick={()=>toggle(it.id)} style={{width:24,height:24,borderRadius:8,border:"2px solid "+(it.done?C.r:"#E8D5D0"),background:it.done?C.r:"#fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 {it.done&&<span style={{color:"#fff",fontSize:13,fontWeight:900}}>✓</span>}
               </button>
-              <span style={{flex:1,fontSize:14,textDecoration:it.done?"line-through":"none",color:it.done?C.g:C.k}}>{it.text}</span>
-              <button onClick={()=>del(it.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:18}}>×</button>
+              <span style={{flex:1,fontSize:14,textDecoration:it.done?"line-through":"none",color:it.done?C.g:C.k,wordBreak:"break-word"}}>{it.text}</span>
+              <button onClick={()=>del(it.id)} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:18,flexShrink:0}}>×</button>
             </div>
           ))}
           {al.items.length===0 && <div style={{textAlign:"center",color:C.g,padding:36,fontSize:14}}>Nothing here yet. Add your first item!</div>}
