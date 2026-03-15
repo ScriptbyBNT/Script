@@ -409,6 +409,7 @@ function Chalk({ userId, dark, userEmail }) {
 
   return(
     <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",borderRadius:14,background:dark?"#1C2C1C":"#6b8c52",border:"2px solid rgba(255,255,255,.15)"}}>
+      <style>{`@media(min-width:600px){.chalk-textarea{font-size:15px!important;line-height:1.6!important;} .chalk-board{max-width:700px;margin:0 auto;width:100%;position:relative;}}`}</style>
       <div style={{flexShrink:0,background:"rgba(0,0,0,.22)",borderBottom:"2px solid rgba(0,0,0,.2)",padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
         <div style={{display:"flex",gap:5,alignItems:"center",flex:1}}>
           {pieces.map((pc,i)=><div key={i} style={{width:pc.w,height:11,borderRadius:3,background:pc.c,opacity:.85}}/>)}
@@ -438,7 +439,7 @@ function Chalk({ userId, dark, userEmail }) {
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
         {!loaded&&<div style={{position:"absolute",inset:0,background:dark?"#1C2C1C":"#6b8c52",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner msg=""/></div>}
         {mode==="type"&&(
-          <textarea value={text} onChange={e=>onTextChange(e.target.value)} placeholder=""
+          <textarea value={text} onChange={e=>onTextChange(e.target.value)} placeholder="" className="chalk-textarea"
             style={{position:"absolute",inset:0,width:"100%",height:"100%",padding:"20px 24px",background:"transparent",border:"none",outline:"none",resize:"none",color:"#fff",fontSize:17,lineHeight:1.7,fontFamily:"'Nunito',sans-serif",boxSizing:"border-box"}}
           ></textarea>
         )}
@@ -1417,7 +1418,7 @@ export default function Script() {
         <App userId={user.id} dark={dark} userEmail={user.email||""}/>
       </div>
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
-        <div style={{display:"flex",paddingTop:8}}>
+        <div style={{display:"flex",paddingTop:14}}>
           {NAV.map(n=>{ const on=active===n.id; return(
             <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:2,paddingBottom:2,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"background .15s"}}>
               <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
