@@ -1500,8 +1500,8 @@ export default function Script() {
             </button>);
           })}
         </div>
-        {/* White spacer below tabs for iPhone home bar */}
-        <div style={{height:20,background:D.headerBg}}/>
+        {/* Spacer below tabs for iPhone home bar */}
+        <div style={{height:34,background:D.headerBg}}/>
       </div>
 
       {/* Settings sheet */}
