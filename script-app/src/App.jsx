@@ -1499,7 +1499,7 @@ export default function Script() {
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,display:"flex",flexShrink:0}}>
         {NAV.map(n=>{
           const on=active===n.id;
-          return(<button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:10,paddingBottom:"max(10px, env(safe-area-inset-bottom))",paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"background .15s"}}>
+          return(<button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:10,paddingBottom:30,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"background .15s"}}>
             <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
             <span style={{fontSize:9,fontWeight:800,color:on?"#fff":n.color,letterSpacing:.3,textTransform:"uppercase"}}>{n.label}</span>
           </button>);
