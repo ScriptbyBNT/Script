@@ -772,24 +772,18 @@ function SharedCalendarView({ shareId }) {
             </div>
           </div>
         </div>
+        {/* Add to My Calendar — always visible so user always sees it */}
+        <button onClick={addToMyCalendar} disabled={addState==="adding"||!selKey||(!(data?.data||{})[selKey]?.trim())} style={{background:addState==="added"?"#1B6B35":addState==="error"?"#888":C.r,color:"#fff",border:"none",borderRadius:12,padding:"12px",fontSize:14,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",gap:8,opacity:(selKey&&(data?.data||{})[selKey]?.trim())?1:0.4,transition:"opacity .2s"}}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/>
+          </svg>
+          {addState==="adding"?"Adding...":addState==="added"?"✓ Added to My Calendar!":addState==="error"?"Error — try again":"Add to My Calendar"}
+        </button>
         {selKey&&(data?.data||{})[selKey]?.trim() ? (
           <div style={{display:"flex",flexDirection:"column",gap:10,flex:1}}>
-            <div style={{background:C.r,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-              <div>
-                <div style={{color:"rgba(255,255,255,.6)",fontSize:11,letterSpacing:1}}>{selMonth!=null?MONTHS[selMonth-1].toUpperCase():""}</div>
-                <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{selDay}</div>
-              </div>
-              {/* Add to My Calendar button */}
-              <button onClick={addToMyCalendar} disabled={addState==="adding"} style={{background:addState==="added"?"rgba(255,255,255,.35)":"rgba(255,255,255,.2)",border:"1.5px solid rgba(255,255,255,.4)",borderRadius:10,padding:"8px 14px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
-                {addState==="adding" ? "Adding..." : addState==="added" ? "✓ Added!" : addState==="error" ? "Error" : (
-                  <>
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/>
-                    </svg>
-                    Add to Mine
-                  </>
-                )}
-              </button>
+            <div style={{background:C.r,borderRadius:14,padding:"12px 16px",flexShrink:0}}>
+              <div style={{color:"rgba(255,255,255,.6)",fontSize:11,letterSpacing:1}}>{selMonth!=null?MONTHS[selMonth-1].toUpperCase():""}</div>
+              <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{selDay}</div>
             </div>
             <div style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:15,background:"#fff",color:C.k,lineHeight:1.6,minHeight:120,whiteSpace:"pre-wrap"}}>{(data?.data||{})[selKey]}</div>
           </div>
@@ -1495,15 +1489,19 @@ export default function Script() {
         <App userId={user.id}/>
       </div>
 
-      {/* Bottom nav — paddingBottom respects iPhone home bar */}
-      <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,display:"flex",flexShrink:0}}>
-        {NAV.map(n=>{
-          const on=active===n.id;
-          return(<button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:10,paddingBottom:30,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"background .15s"}}>
-            <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
-            <span style={{fontSize:9,fontWeight:800,color:on?"#fff":n.color,letterSpacing:.3,textTransform:"uppercase"}}>{n.label}</span>
-          </button>);
-        })}
+      {/* Bottom nav */}
+      <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
+        <div style={{display:"flex"}}>
+          {NAV.map(n=>{
+            const on=active===n.id;
+            return(<button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:10,paddingBottom:10,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"background .15s"}}>
+              <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
+              <span style={{fontSize:9,fontWeight:800,color:on?"#fff":n.color,letterSpacing:.3,textTransform:"uppercase"}}>{n.label}</span>
+            </button>);
+          })}
+        </div>
+        {/* White spacer below tabs for iPhone home bar */}
+        <div style={{height:20,background:D.headerBg}}/>
       </div>
 
       {/* Settings sheet */}
