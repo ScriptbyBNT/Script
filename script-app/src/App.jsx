@@ -634,45 +634,59 @@ function Lists({ userId }) {
 function Calendar({ userId }) {
   const [evts, setEvts] = useState({});
   const [cal, setCal] = useState(()=>{ const n=new Date(); return new Date(n.getFullYear(),n.getMonth(),1); });
-  const [sel, setSel] = useState(null);
-  const [note, setNote] = useState("");
-  const [loaded, setLoaded] = useState(false);
+  const [selKey, setSelKey] = useState(null); // "YYYY-M-D" — single source of truth
   const evtsRef = useRef({});
-  const selRef = useRef(null);
-  const calRef = useRef(null);
   const saveTimer = useRef(null);
+  const [loaded, setLoaded] = useState(false);
   const now = new Date();
 
-  useEffect(()=>{ dbLoad(userId,"cal").then(v=>{ const d=v||{}; setEvts(d); evtsRef.current=d; setLoaded(true); }); },[userId]);
+  useEffect(()=>{
+    dbLoad(userId,"cal").then(v=>{
+      const d = v||{};
+      setEvts(d);
+      evtsRef.current = d;
+      setLoaded(true);
+    });
+  },[userId]);
 
-  const y=cal.getFullYear(), m=cal.getMonth();
-  const dim=new Date(y,m+1,0).getDate(), fd=new Date(y,m,1).getDay();
-  const dk=(day,mo=m,yr=y)=>yr+"-"+(mo+1)+"-"+day;
+  const y = cal.getFullYear(), m = cal.getMonth();
+  const dim = new Date(y,m+1,0).getDate(), fd = new Date(y,m,1).getDay();
 
-  // Auto-save note after typing stops
-  const onNoteChange = val => {
-    setNote(val);
-    const key = dk(selRef.current, calRef.current?.getMonth()??m, calRef.current?.getFullYear()??y);
-    const updated = {...evtsRef.current, [key]: val};
-    evtsRef.current = updated;
-    setEvts(updated);
+  // Always build the key from explicit yr/mo/day — never from closure
+  const makeKey = (day, yr, mo) => yr+"-"+(mo+1)+"-"+day;
+
+  const selectDay = (day) => {
+    // Flush any pending save immediately
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(()=>{ dbSave(userId,"cal",updated); }, 800);
+    if(selKey !== null) {
+      dbSave(userId,"cal", evtsRef.current);
+    }
+    setSelKey(makeKey(day, y, m));
   };
 
-  const selectDay = d => {
-    // Save current note immediately before switching
-    if(selRef.current !== null) {
-      clearTimeout(saveTimer.current);
-      const key = dk(selRef.current, calRef.current?.getMonth()??m, calRef.current?.getFullYear()??y);
-      const updated = {...evtsRef.current};
-      evtsRef.current = updated;
-      dbSave(userId,"cal",updated);
-    }
-    selRef.current = d;
-    calRef.current = cal;
-    setSel(d);
-    setNote(evtsRef.current[dk(d)]||"");
+  const onNoteChange = val => {
+    if(!selKey) return;
+    const updated = {...evtsRef.current, [selKey]: val};
+    evtsRef.current = updated;
+    setEvts({...updated});
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(()=>{ dbSave(userId,"cal", evtsRef.current); }, 800);
+  };
+
+  // Parse selKey back to display values — never use stale closure m/y
+  const selParts = selKey ? selKey.split("-").map(Number) : null;
+  const selYear = selParts?.[0], selMonth = selParts?.[1], selDay = selParts?.[2];
+  const currentNote = selKey ? (evtsRef.current[selKey] || "") : "";
+
+  // Sync textarea value when switching days
+  const [noteVal, setNoteVal] = useState("");
+  useEffect(()=>{
+    setNoteVal(evtsRef.current[selKey] || "");
+  }, [selKey]);
+
+  const handleNoteChange = val => {
+    setNoteVal(val);
+    onNoteChange(val);
   };
 
   if (!loaded) return <Spinner msg="Loading calendar..."/>;
@@ -680,12 +694,12 @@ function Calendar({ userId }) {
     <div style={{flex:1,display:"flex",flexDirection:"column",gap:12,minHeight:0}}>
       <div style={{background:"#fff",borderRadius:14,border:"1.5px solid "+C.bd,overflow:"hidden",flexShrink:0}}>
         <div style={{background:"linear-gradient(135deg,#C8220A,#E03010)",padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <button onClick={()=>setCal(new Date(y,m-1,1))} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+          <button onClick={()=>{setSelKey(null);setCal(new Date(y,m-1,1));}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
           <div style={{textAlign:"center"}}>
             <div style={{fontFamily:"'Nunito',sans-serif",color:"#fff",fontWeight:900,fontSize:18}}>{MONTHS[m]}</div>
             <div style={{color:"rgba(255,255,255,.6)",fontSize:12}}>{y}</div>
           </div>
-          <button onClick={()=>setCal(new Date(y,m+1,1))} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+          <button onClick={()=>{setSelKey(null);setCal(new Date(y,m+1,1));}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
         </div>
         <div style={{padding:"12px 14px"}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:6}}>
@@ -694,7 +708,11 @@ function Calendar({ userId }) {
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
             {Array(fd).fill(null).map((_,i)=><div key={"e"+i}/>)}
             {Array(dim).fill(null).map((_,i)=>{
-              const d=i+1,isT=d===now.getDate()&&m===now.getMonth()&&y===now.getFullYear(),isS=sel===d,has=!!evts[dk(d)];
+              const d=i+1;
+              const key=makeKey(d,y,m);
+              const isT=d===now.getDate()&&m===now.getMonth()&&y===now.getFullYear();
+              const isS=selKey===key;
+              const has=!!(evts[key]||evtsRef.current[key]);
               return(
                 <div key={d} onClick={()=>selectDay(d)} style={{borderRadius:8,padding:"6px 2px",textAlign:"center",cursor:"pointer",background:isS?C.r:isT?C.rl:"transparent",border:isT&&!isS?"1.5px solid "+C.r:"1.5px solid transparent"}}>
                   <div style={{fontSize:13,fontWeight:isT||isS?800:400,color:isS?"#fff":isT?C.r:C.k}}>{d}</div>
@@ -705,15 +723,19 @@ function Calendar({ userId }) {
           </div>
         </div>
       </div>
-      {sel ? (
+      {selKey ? (
         <div style={{display:"flex",flexDirection:"column",gap:10,flex:1,minHeight:0}}>
           <div style={{background:C.r,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",flexShrink:0}}>
             <div>
-              <div style={{color:"rgba(255,255,255,.6)",fontSize:11,letterSpacing:1}}>{MONTHS[m].toUpperCase()}</div>
-              <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{sel}</div>
+              <div style={{color:"rgba(255,255,255,.6)",fontSize:11,letterSpacing:1}}>{selMonth!=null?MONTHS[selMonth-1].toUpperCase():""}</div>
+              <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{selDay}</div>
             </div>
           </div>
-          <textarea value={note} onChange={e=>onNoteChange(e.target.value)} placeholder="Notes for this day..."
+          <textarea
+            key={selKey}
+            defaultValue={evtsRef.current[selKey]||""}
+            onChange={e=>handleNoteChange(e.target.value)}
+            placeholder="Notes for this day..."
             style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid "+C.bd,fontSize:16,resize:"none",outline:"none",fontFamily:"inherit",background:"#fff",color:C.k}}
           />
         </div>
