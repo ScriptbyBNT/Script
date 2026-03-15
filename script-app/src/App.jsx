@@ -847,7 +847,7 @@ function CalendarNote({ selKey, evtsRef, userId, onUpdate }) {
       onChange={onChange}
       placeholder="Notes for this day..."
       style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:16,resize:"none",outline:"none",fontFamily:"'Nunito',sans-serif",background:"#fff !important",color:"#1C1C1E !important",WebkitTextFillColor:"#1C1C1E"}}
-    />
+    ></textarea>
   );
 }
 
@@ -1130,7 +1130,7 @@ function Money({ userId }) {
                   <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
                     <input style={inp} defaultValue={t.desc} id={"edit-desc-"+t.id} placeholder="Title"/>
                     <textarea id={"edit-note-"+t.id} defaultValue={t.note||""} placeholder="Notes..." rows={3}
-                      style={{...inp,resize:"none",fontFamily:"inherit"}}/>
+                      style={{...inp,resize:"none",fontFamily:"inherit"}}></textarea>
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={()=>{
                         const newDesc=document.getElementById("edit-desc-"+t.id).value.trim();
