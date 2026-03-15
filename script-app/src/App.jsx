@@ -214,10 +214,11 @@ function Login({ onLogin }) {
 }
 
 // ── CHALK ──
-function Chalk({ userId }) {
+function Chalk({ userId, dark }) {
   const [text,setText]=useState("");
   const [loaded,setLoaded]=useState(false);
   const [mode,setMode]=useState("type");
+  const [shareState,setShareState]=useState("idle");
   const [drawing,setDrawing]=useState(false);
   const [paths,setPaths]=useState([]);
   const [color,setColor]=useState("#ffffff");
@@ -236,6 +237,21 @@ function Chalk({ userId }) {
 
   const save=(t,p)=>{ clearTimeout(timer.current); timer.current=setTimeout(async()=>{ await dbSave(userId,"chalk",{text:t,paths:p}); },1200); };
   const onTextChange=val=>{ setText(val); save(val,paths); };
+  const shareNote=async()=>{
+    setShareState("sharing");
+    try{
+      const id="note_"+userId.replace(/-/g,"").slice(0,12);
+      const email=(await sb.auth.getUser()).data?.user?.email||"";
+      const{error}=await sb.from("shared_data").upsert({id,user_id:userId,data:text,title:"Notes",owner_email:email,updated_at:new Date().toISOString()},{onConflict:"id"});
+      if(error) throw error;
+      const link="https://script-sable.vercel.app/#list/"+id;
+      if(navigator.share){ await navigator.share({title:"My Notes",url:link}); } else { await navigator.clipboard.writeText(link); }
+      setShareState("copied"); setTimeout(()=>setShareState("idle"),3000);
+    }catch(e){
+      if(e?.name==="AbortError"){setShareState("idle");return;}
+      setShareState("error"); setTimeout(()=>setShareState("idle"),3000);
+    }
+  };
 
   useEffect(()=>{
     if(mode!=="draw"||!canvasRef.current) return;
@@ -270,7 +286,7 @@ function Chalk({ userId }) {
   const pieces=[{w:44,c:"#F5F0E8"},{w:28,c:"#E8C49A"},{w:38,c:"#C8DDB0"},{w:22,c:"#A8C4D8"},{w:34,c:"#D4B8E0"}];
 
   return(
-    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",borderRadius:14,background:"#6b8c52",border:"2px solid rgba(255,255,255,.15)"}}>
+    <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",borderRadius:14,background:dark?"#1C2C1C":"#6b8c52",border:"2px solid rgba(255,255,255,.15)"}}>
       <div style={{flexShrink:0,background:"rgba(0,0,0,.22)",borderBottom:"2px solid rgba(0,0,0,.2)",padding:"8px 12px",display:"flex",alignItems:"center",gap:8}}>
         <div style={{display:"flex",gap:5,alignItems:"center",flex:1}}>
           {pieces.map((pc,i)=><div key={i} style={{width:pc.w,height:11,borderRadius:3,background:pc.c,opacity:.85}}/>)}
@@ -281,6 +297,7 @@ function Chalk({ userId }) {
               <button key={m} onClick={()=>setMode(m)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:mode===m?"rgba(255,255,255,.18)":"transparent",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>{l}</button>
             ))}
           </div>
+          {mode==="type"&&<button onClick={shareNote} style={{padding:"4px 10px",borderRadius:6,border:"none",background:shareState==="copied"?"rgba(27,107,56,.8)":shareState==="error"?"rgba(100,100,100,.5)":"rgba(255,255,255,.12)",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>{shareState==="sharing"?"...":shareState==="copied"?"✓ Shared":"⬆ Share"}</button>}
         </div>
       </div>
       {mode==="draw"&&(
@@ -298,7 +315,7 @@ function Chalk({ userId }) {
         </div>
       )}
       <div style={{flex:1,position:"relative",overflow:"hidden"}}>
-        {!loaded&&<div style={{position:"absolute",inset:0,background:"#6b8c52",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner msg=""/></div>}
+        {!loaded&&<div style={{position:"absolute",inset:0,background:dark?"#1C2C1C":"#6b8c52",display:"flex",alignItems:"center",justifyContent:"center"}}><Spinner msg=""/></div>}
         {mode==="type"&&(
           <textarea value={text} onChange={e=>onTextChange(e.target.value)} placeholder=""
             style={{position:"absolute",inset:0,width:"100%",height:"100%",padding:"20px 24px",background:"transparent",border:"none",outline:"none",resize:"none",color:"#fff",fontSize:17,lineHeight:1.7,fontFamily:"'Nunito',sans-serif",boxSizing:"border-box"}}
@@ -308,7 +325,7 @@ function Chalk({ userId }) {
           <canvas ref={canvasRef} width={800} height={1200}
             onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
             onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
-            style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none",background:"#6b8c52"}}
+            style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none",background:dark?"#1C2C1C":"#6b8c52"}}
           />
         )}
         <div style={{position:"absolute",bottom:16,right:16,display:"flex",gap:10,alignItems:"center"}}>
@@ -406,6 +423,7 @@ function Lists({ userId }) {
   const [showN,setShowN]=useState(false);
   const [nn,setNn]=useState("");
   const [loaded,setLoaded]=useState(false);
+  const [shareState,setShareState]=useState("idle");
   const listsRef=useRef(BASE_LISTS);
 
   useEffect(()=>{ dbLoad(userId,"lists").then(v=>{ if(v){ setLists(v); listsRef.current=v; } setLoaded(true); }); },[userId]);
@@ -416,6 +434,23 @@ function Lists({ userId }) {
   const addCustomList=()=>{ if(!nn.trim()) return; const nl={id:"c"+Date.now(),label:nn,kind:"check",items:[]}; const u=[...listsRef.current,nl]; S(u); setActive(nl.id); setNn(""); setShowN(false); };
   const removeList=id=>{ if(active===id) setActive("todo"); S(listsRef.current.filter(x=>x.id!==id)); };
   const al=lists.find(l=>l.id===active)||lists[0];
+
+  const shareList=async()=>{
+    setShareState("sharing");
+    try{
+      const al2=listsRef.current.find(l=>l.id===active)||listsRef.current[0];
+      const id="list_"+userId.replace(/-/g,"").slice(0,12)+"_"+active;
+      const email=(await sb.auth.getUser()).data?.user?.email||"";
+      const{error}=await sb.from("shared_data").upsert({id,user_id:userId,data:al2.items,title:al2.label,owner_email:email,updated_at:new Date().toISOString()},{onConflict:"id"});
+      if(error) throw error;
+      const link="https://script-sable.vercel.app/#list/"+id;
+      if(navigator.share){ await navigator.share({title:al2.label,url:link}); } else { await navigator.clipboard.writeText(link); }
+      setShareState("copied"); setTimeout(()=>setShareState("idle"),3000);
+    }catch(e){
+      if(e?.name==="AbortError"){setShareState("idle");return;}
+      setShareState("error"); setTimeout(()=>setShareState("idle"),3000);
+    }
+  };
 
   if(!loaded) return <Spinner msg="Loading lists..."/>;
   return(
@@ -428,6 +463,7 @@ function Lists({ userId }) {
           </button>
         ))}
         <button onClick={()=>setShowN(!showN)} style={{padding:"6px 12px",borderRadius:20,border:"1.5px dashed #E8D5D0",background:"#fff",color:C.g,fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>+ New</button>
+        <button onClick={shareList} style={{padding:"6px 12px",borderRadius:20,border:"none",background:shareState==="copied"?"#1B6B35":shareState==="error"?"#888":C.r,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{shareState==="sharing"?"...":shareState==="copied"?"✓ Copied":"⬆ Share"}</button>
       </div>
       {showN&&(
         <div style={box}>
@@ -482,6 +518,71 @@ function CalendarNote({ selKey, evtsRef, userId, onUpdate }) {
     <textarea value={val} onChange={onChange} placeholder="Notes for this day..."
       style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:16,resize:"none",outline:"none",fontFamily:"'Nunito',sans-serif",background:"#fff",color:"#1C1C1E"}}
     ></textarea>
+  );
+}
+
+function SharedListView({ shareId }) {
+  const [data,setData]=useState(null);
+  const [loaded,setLoaded]=useState(false);
+  const [notFound,setNotFound]=useState(false);
+
+  useEffect(()=>{
+    sb.from("shared_data").select("data,owner_email,title").eq("id",shareId).single()
+      .then(({data:row,error})=>{ if(error||!row){setNotFound(true);setLoaded(true);return;} setData(row); setLoaded(true); });
+  },[shareId]);
+
+  if(!loaded) return(
+    <div style={{minHeight:"100svh",background:C.r,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontFamily:"'Nunito',sans-serif",fontSize:40,fontWeight:900,color:"#fff",marginBottom:16}}>Script</div>
+        <div style={{width:32,height:32,border:"3px solid rgba(255,255,255,.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto"}}/>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    </div>
+  );
+
+  if(notFound) return(
+    <div style={{minHeight:"100svh",background:"#F5F0EE",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Nunito',sans-serif"}}>
+      <div style={{textAlign:"center",padding:32}}>
+        <div style={{fontSize:48,marginBottom:12}}>📋</div>
+        <div style={{fontWeight:900,fontSize:22,color:C.k,marginBottom:8}}>Not found</div>
+        <div style={{color:C.g,fontSize:14}}>This link may have expired.</div>
+        <a href="https://script-sable.vercel.app" style={{display:"inline-block",marginTop:20,padding:"12px 24px",background:C.r,color:"#fff",borderRadius:10,textDecoration:"none",fontWeight:700}}>Open Script</a>
+      </div>
+    </div>
+  );
+
+  const items = data?.data||[];
+  const title = data?.title||"Shared List";
+  const isNote = typeof items === "string";
+
+  return(
+    <div style={{minHeight:"100svh",background:"#F5F0EE",fontFamily:"'Nunito',sans-serif",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"#fff",borderBottom:"1.5px solid #E8D5D0",padding:"12px 16px",display:"flex",alignItems:"center",gap:9,flexShrink:0}}>
+        <div style={{width:28,height:28,borderRadius:8,background:C.r,display:"flex",alignItems:"center",justifyContent:"center"}}><ScrollIcon sz={16} white={true}/></div>
+        <span style={{fontFamily:"'Nunito',sans-serif",fontSize:18,fontWeight:900,color:C.r}}>Script</span>
+        <div style={{marginLeft:"auto",fontSize:11,color:C.g,fontWeight:700,background:"#F5F0EE",padding:"4px 10px",borderRadius:20}}>READ ONLY</div>
+      </div>
+      {data?.owner_email&&<div style={{background:"#fff",borderBottom:"1.5px solid #E8D5D0",padding:"8px 16px",fontSize:12,color:C.g}}>📋 Shared by <span style={{fontWeight:700,color:C.k}}>{data.owner_email}</span></div>}
+      <div style={{flex:1,padding:"14px 16px",maxWidth:500,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
+        <div style={{fontWeight:900,fontSize:20,color:C.k,marginBottom:14}}>{title}</div>
+        {isNote ? (
+          <div style={{background:"#fff",borderRadius:14,border:"1.5px solid #E8D5D0",padding:"16px",fontSize:15,color:C.k,lineHeight:1.7,whiteSpace:"pre-wrap"}}>{items}</div>
+        ) : (
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {items.map((it,i)=>(
+              <div key={i} style={{display:"flex",alignItems:"center",gap:11,padding:"12px 14px",background:"#fff",borderRadius:12,border:"1.5px solid #E8D5D0"}}>
+                <div style={{width:22,height:22,borderRadius:7,border:"2px solid "+(it.done?C.r:"#E8D5D0"),background:it.done?C.r:"#fff",flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center"}}>
+                  {it.done&&<span style={{color:"#fff",fontSize:12,fontWeight:900}}>✓</span>}
+                </div>
+                <span style={{flex:1,fontSize:14,textDecoration:it.done?"line-through":"none",color:it.done?C.g:C.k}}>{it.text}</span>
+              </div>
+            ))}
+            {items.length===0&&<div style={{textAlign:"center",color:C.g,padding:36,fontSize:14}}>Nothing in this list.</div>}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -704,12 +805,10 @@ function Calendar({ userId }) {
         {shareState==="sharing"?"Publishing...":shareState==="copied"?"✓ Link Copied!":shareState==="error"?"Error — try again":"Share Calendar"}
       </button>
       {selKey?(
-        <div style={{display:"flex",flexDirection:"column",gap:10,flex:1,minHeight:0}}>
-          <div style={{background:C.r,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",flexShrink:0}}>
-            <div>
-              <div style={{color:"rgba(255,255,255,.6)",fontSize:11,letterSpacing:1}}>{selMonth!=null?MONTHS[selMonth-1].toUpperCase():""}</div>
-              <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{selDay}</div>
-            </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8,flex:1,minHeight:0}}>
+          <div style={{background:C.r,borderRadius:10,padding:"7px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+            <div style={{fontFamily:"'Nunito',sans-serif",fontSize:18,fontWeight:900,color:"#fff"}}>{selDay}</div>
+            <div style={{color:"rgba(255,255,255,.7)",fontSize:12,fontWeight:700}}>{selMonth!=null?MONTHS[selMonth-1]+" "+selKey?.split("-")[0]:""}</div>
           </div>
           <CalendarNote key={selKey} selKey={selKey} evtsRef={evtsRef} userId={userId} onUpdate={updated=>setEvts({...updated})}/>
         </div>
@@ -902,8 +1001,9 @@ function HealthFI({k,pl,span,form,setForm}) {
   return <input style={{...inp,...(span?{gridColumn:"span 2"}:{})}} value={form[k]||""} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))} placeholder={pl}/>;
 }
 
-function HealthHCard({item,labelEl,children,onDel,list,setList,saveKey,userId,expandId,setExpandId,setLightbox}) {
+function HealthHCard({item,labelEl,children,onDel,list,setList,saveKey,userId,expandId,setExpandId,setLightbox,editItemId,setEditItemId,editItemForm,setEditItemForm,onSaveEdit}) {
   const expanded=expandId===item.id;
+  const isEditing=editItemId===item.id;
   const addImg=file=>{ if(!file) return; const r=new FileReader(); r.onload=async e=>{ const u=list.map(x=>x.id===item.id?{...x,imgs:[...(x.imgs||[]),{id:Date.now(),data:e.target.result,name:file.name}]}:x); setList(u); await dbSave(userId,saveKey,u); }; r.readAsDataURL(file); };
   const removeImg=async imgId=>{ const u=list.map(x=>x.id===item.id?{...x,imgs:(x.imgs||[]).filter(i=>i.id!==imgId)}:x); setList(u); await dbSave(userId,saveKey,u); };
   return(
@@ -918,7 +1018,22 @@ function HealthHCard({item,labelEl,children,onDel,list,setList,saveKey,userId,ex
       </div>
       {expanded&&(
         <div style={{padding:"0 15px 13px",borderTop:"1px solid #f5f0ee"}}>
-          <div style={{marginTop:10,display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          {isEditing?(
+            <div style={{display:"flex",flexDirection:"column",gap:8,marginTop:10,marginBottom:8}}>
+              {Object.keys(editItemForm).filter(k=>k!=="id"&&k!=="imgs").map(k=>(
+                <input key={k} style={inp} value={editItemForm[k]||""} onChange={e=>setEditItemForm(f=>({...f,[k]:e.target.value}))} placeholder={k.charAt(0).toUpperCase()+k.slice(1)}/>
+              ))}
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>{onSaveEdit(item.id,editItemForm);setEditItemId(null);}} style={{...btn(),flex:1,fontSize:13,padding:"9px"}}>Save</button>
+                <button onClick={()=>setEditItemId(null)} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",flex:1,fontSize:13,padding:"9px"}}>Cancel</button>
+              </div>
+            </div>
+          ):(
+            <div style={{display:"flex",justifyContent:"flex-end",marginTop:8,marginBottom:4}}>
+              <button onClick={()=>{setEditItemId(item.id);setEditItemForm({...item});setExpandId(item.id);}} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:12,fontWeight:700}}>Edit</button>
+            </div>
+          )}
+          <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
             {(item.imgs||[]).map((img,i)=>(
               <div key={img.id} style={{position:"relative",borderRadius:8,overflow:"hidden",border:"1.5px solid #E8D5D0"}}>
                 <img src={img.data} alt={img.name} onClick={()=>setLightbox({imgs:item.imgs,idx:i})} style={{width:64,height:64,objectFit:"cover",cursor:"pointer",display:"block"}}/>
@@ -944,6 +1059,8 @@ function Health({ userId }) {
   const [meds,setMeds]=useState([]);
   const [form,setForm]=useState({});
   const [open,setOpen]=useState(false);
+  const [editItemId,setEditItemId]=useState(null);
+  const [editItemForm,setEditItemForm]=useState({});
   const [lightbox,setLightbox]=useState(null);
   const [expandId,setExpandId]=useState(null);
   const [loaded,setLoaded]=useState(false);
@@ -979,9 +1096,9 @@ function Health({ userId }) {
         </div>
       )}
       <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
-        {tab==="docs"&&docs.map(d=><HealthHCard key={d.id} item={d} list={docs} setList={Sd} saveKey="docs" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} onDel={()=>Sd(docs.filter(x=>x.id!==d.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#FDE8F0",color:"#AD1457"}}>{d.name?.[0]?.toUpperCase()||"D"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{d.name}</div><div style={{fontSize:12,color:C.g}}>{d.specialty}{d.phone?` • ${d.phone}`:""}</div></HealthHCard>)}
-        {tab==="apts"&&apts.map(a=><HealthHCard key={a.id} item={a} list={apts} setList={Sa} saveKey="apts" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} onDel={()=>Sa(apts.filter(x=>x.id!==a.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#E8F4FD",color:"#0277BD"}}>{a.title?.[0]?.toUpperCase()||"A"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{a.title}</div><div style={{fontSize:12,color:C.g}}>{a.date}{a.doctor?` • ${a.doctor}`:""}</div></HealthHCard>)}
-        {tab==="meds"&&meds.map(m=><HealthHCard key={m.id} item={m} list={meds} setList={Sm} saveKey="meds" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} onDel={()=>Sm(meds.filter(x=>x.id!==m.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#E8F8F0",color:"#1B5E20"}}>{m.name?.[0]?.toUpperCase()||"M"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{m.name}</div><div style={{fontSize:12,color:C.g}}>{m.dosage}{m.frequency?` • ${m.frequency}`:""}</div></HealthHCard>)}
+        {tab==="docs"&&docs.map(d=><HealthHCard key={d.id} item={d} list={docs} setList={Sd} saveKey="docs" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} editItemId={editItemId} setEditItemId={setEditItemId} editItemForm={editItemForm} setEditItemForm={setEditItemForm} onSaveEdit={(id,f)=>{const u=docs.map(x=>x.id===id?{...x,...f}:x);Sd(u);}} onDel={()=>Sd(docs.filter(x=>x.id!==d.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#FDE8F0",color:"#AD1457"}}>{d.name?.[0]?.toUpperCase()||"D"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{d.name}</div><div style={{fontSize:12,color:C.g}}>{d.specialty}{d.phone?` • ${d.phone}`:""}</div></HealthHCard>)}
+        {tab==="apts"&&apts.map(a=><HealthHCard key={a.id} item={a} list={apts} setList={Sa} saveKey="apts" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} editItemId={editItemId} setEditItemId={setEditItemId} editItemForm={editItemForm} setEditItemForm={setEditItemForm} onSaveEdit={(id,f)=>{const u=apts.map(x=>x.id===id?{...x,...f}:x);Sa(u);}} onDel={()=>Sa(apts.filter(x=>x.id!==a.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#E8F4FD",color:"#0277BD"}}>{a.title?.[0]?.toUpperCase()||"A"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{a.title}</div><div style={{fontSize:12,color:C.g}}>{a.date}{a.doctor?` • ${a.doctor}`:""}</div></HealthHCard>)}
+        {tab==="meds"&&meds.map(m=><HealthHCard key={m.id} item={m} list={meds} setList={Sm} saveKey="meds" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} editItemId={editItemId} setEditItemId={setEditItemId} editItemForm={editItemForm} setEditItemForm={setEditItemForm} onSaveEdit={(id,f)=>{const u=meds.map(x=>x.id===id?{...x,...f}:x);Sm(u);}} onDel={()=>Sm(meds.filter(x=>x.id!==m.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#E8F8F0",color:"#1B5E20"}}>{m.name?.[0]?.toUpperCase()||"M"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{m.name}</div><div style={{fontSize:12,color:C.g}}>{m.dosage}{m.frequency?` • ${m.frequency}`:""}</div></HealthHCard>)}
         {((tab==="docs"&&!docs.length)||(tab==="apts"&&!apts.length)||(tab==="meds"&&!meds.length))&&<div style={{textAlign:"center",color:C.g,padding:40,fontSize:14}}>Nothing here yet.</div>}
       </div>
       {lightbox&&(
@@ -1100,6 +1217,8 @@ export default function Script() {
   const hash=window.location.hash;
   const hashShare=hash.match(/^#share\/(.+)$/);
   if(hashShare) return <SharedCalendarView shareId={hashShare[1]}/>;
+  const hashList=hash.match(/^#list\/(.+)$/);
+  if(hashList) return <SharedListView shareId={hashList[1]}/>;
 
   useEffect(()=>{ localStorage.setItem("script_dark",dark?"1":"0"); },[dark]);
   useEffect(()=>{
@@ -1158,12 +1277,12 @@ export default function Script() {
         <h1 style={{margin:0,fontSize:22,fontWeight:900,color:cur?.color||D.text,fontFamily:"'Nunito',sans-serif"}}>{cur?.label}</h1>
       </div>
       <div style={{flex:1,padding:"14px 16px",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-        <App userId={user.id}/>
+        <App userId={user.id} dark={dark}/>
       </div>
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
         <div style={{display:"flex"}}>
           {NAV.map(n=>{ const on=active===n.id; return(
-            <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:10,paddingBottom:10,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"background .15s"}}>
+            <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:8,paddingBottom:8,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"background .15s"}}>
               <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
               <span style={{fontSize:9,fontWeight:800,color:on?"#fff":n.color,letterSpacing:.3,textTransform:"uppercase"}}>{n.label}</span>
             </button>
