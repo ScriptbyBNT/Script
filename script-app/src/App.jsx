@@ -631,6 +631,115 @@ function Lists({ userId }) {
   );
 }
 
+function SharedCalendarView({ shareId }) {
+  const [data, setData] = useState(null);
+  const [cal, setCal] = useState(()=>{ const n=new Date(); return new Date(n.getFullYear(),n.getMonth(),1); });
+  const [selKey, setSelKey] = useState(null);
+  const [loaded, setLoaded] = useState(false);
+  const [notFound, setNotFound] = useState(false);
+  const now = new Date();
+
+  useEffect(()=>{
+    sb.from("shared_calendars").select("data,owner_email").eq("id",shareId).single()
+      .then(({data:row,error})=>{
+        if(error||!row){ setNotFound(true); setLoaded(true); return; }
+        setData(row); setLoaded(true);
+      });
+  },[shareId]);
+
+  const y=cal.getFullYear(), m=cal.getMonth();
+  const dim=new Date(y,m+1,0).getDate(), fd=new Date(y,m,1).getDay();
+  const makeKey=(day,yr,mo)=>yr+"-"+(mo+1)+"-"+day;
+  const selParts=selKey?selKey.split("-").map(Number):null;
+  const selMonth=selParts?.[1], selDay=selParts?.[2];
+
+  if(!loaded) return(
+    <div style={{minHeight:"100svh",background:C.r,display:"flex",alignItems:"center",justifyContent:"center"}}>
+      <div style={{textAlign:"center"}}>
+        <div style={{fontFamily:"'Nunito',sans-serif",fontSize:40,fontWeight:900,color:"#fff",marginBottom:16}}>Script</div>
+        <div style={{width:32,height:32,border:"3px solid rgba(255,255,255,.3)",borderTopColor:"#fff",borderRadius:"50%",animation:"spin 0.8s linear infinite",margin:"0 auto"}}/>
+        <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+      </div>
+    </div>
+  );
+
+  if(notFound) return(
+    <div style={{minHeight:"100svh",background:"#F5F0EE",display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"'Nunito',sans-serif"}}>
+      <div style={{textAlign:"center",padding:32}}>
+        <div style={{fontSize:48,marginBottom:12}}>📅</div>
+        <div style={{fontWeight:900,fontSize:22,color:C.k,marginBottom:8}}>Calendar not found</div>
+        <div style={{color:C.g,fontSize:14}}>This link may have expired or been removed.</div>
+        <a href="https://script-sable.vercel.app" style={{display:"inline-block",marginTop:20,padding:"12px 24px",background:C.r,color:"#fff",borderRadius:10,textDecoration:"none",fontWeight:700}}>Open Script</a>
+      </div>
+    </div>
+  );
+
+  const evts = data?.data || {};
+
+  return(
+    <div style={{minHeight:"100svh",background:"#F5F0EE",fontFamily:"'Nunito',sans-serif",display:"flex",flexDirection:"column"}}>
+      <div style={{background:"#fff",borderBottom:"1.5px solid #E8D5D0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:9}}>
+          <div style={{width:28,height:28,borderRadius:8,background:C.r,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <ScrollIcon sz={16} white={true}/>
+          </div>
+          <span style={{fontFamily:"'Nunito',sans-serif",fontSize:18,fontWeight:900,color:C.r}}>Script</span>
+        </div>
+        <div style={{fontSize:11,color:C.g,fontWeight:700,background:"#F5F0EE",padding:"4px 10px",borderRadius:20}}>READ ONLY</div>
+      </div>
+      {data?.owner_email&&(
+        <div style={{background:"#fff",borderBottom:"1.5px solid #E8D5D0",padding:"8px 16px",fontSize:12,color:C.g}}>
+          📅 Shared by <span style={{fontWeight:700,color:C.k}}>{data.owner_email}</span>
+        </div>
+      )}
+      <div style={{flex:1,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12,maxWidth:500,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
+        <div style={{background:"#fff",borderRadius:14,border:"1.5px solid #E8D5D0",overflow:"hidden",flexShrink:0}}>
+          <div style={{background:"linear-gradient(135deg,#C8220A,#E03010)",padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <button onClick={()=>{setSelKey(null);setCal(new Date(y,m-1,1));}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+            <div style={{textAlign:"center"}}>
+              <div style={{fontFamily:"'Nunito',sans-serif",color:"#fff",fontWeight:900,fontSize:18}}>{MONTHS[m]}</div>
+              <div style={{color:"rgba(255,255,255,.6)",fontSize:12}}>{y}</div>
+            </div>
+            <button onClick={()=>{setSelKey(null);setCal(new Date(y,m+1,1));}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+          </div>
+          <div style={{padding:"12px 14px"}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:6}}>
+              {WDAYS.map(d=><div key={d} style={{textAlign:"center",fontSize:11,fontWeight:700,color:C.g,padding:"2px 0"}}>{d}</div>)}
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+              {Array(fd).fill(null).map((_,i)=><div key={"e"+i}/>)}
+              {Array(dim).fill(null).map((_,i)=>{
+                const d=i+1, key=makeKey(d,y,m);
+                const isT=d===now.getDate()&&m===now.getMonth()&&y===now.getFullYear();
+                const isS=selKey===key, has=!!evts[key]?.trim();
+                return(
+                  <div key={d} onClick={()=>setSelKey(isS?null:key)} style={{borderRadius:8,padding:"6px 2px",textAlign:"center",cursor:has?"pointer":"default",background:isS?C.r:isT?C.rl:"transparent",border:isT&&!isS?"1.5px solid "+C.r:"1.5px solid transparent"}}>
+                    <div style={{fontSize:13,fontWeight:isT||isS?800:400,color:isS?"#fff":isT?C.r:C.k}}>{d}</div>
+                    {has&&<div style={{width:5,height:5,borderRadius:"50%",background:isS?"#fff":C.r,margin:"2px auto 0"}}/>}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+        {selKey&&evts[selKey]?.trim() ? (
+          <div style={{display:"flex",flexDirection:"column",gap:10,flex:1}}>
+            <div style={{background:C.r,borderRadius:14,padding:"12px 16px",flexShrink:0}}>
+              <div style={{color:"rgba(255,255,255,.6)",fontSize:11,letterSpacing:1}}>{selMonth!=null?MONTHS[selMonth-1].toUpperCase():""}</div>
+              <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{selDay}</div>
+            </div>
+            <div style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:15,background:"#fff",color:C.k,lineHeight:1.6,minHeight:120,whiteSpace:"pre-wrap"}}>{evts[selKey]}</div>
+          </div>
+        ) : selKey ? (
+          <div style={{textAlign:"center",color:C.g,padding:24,fontSize:14}}>No notes for this day</div>
+        ) : (
+          <div style={{textAlign:"center",color:C.g,padding:24,fontSize:14}}>Tap a day with a dot to read notes</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function CalendarNote({ selKey, evtsRef, userId, onUpdate }) {
   const [val, setVal] = useState(()=> evtsRef.current[selKey] || "");
   const saveTimer = useRef(null);
@@ -689,6 +798,29 @@ function Calendar({ userId }) {
 
   const selParts = selKey ? selKey.split("-").map(Number) : null;
   const selMonth = selParts?.[1], selDay = selParts?.[2];
+  const [shareState, setShareState] = useState("idle");
+
+  const shareCalendar = async () => {
+    setShareState("sharing");
+    try {
+      const id = "cal_" + userId.replace(/-/g,"").slice(0,12);
+      const { error } = await sb.from("shared_calendars").upsert({
+        id, user_id: userId, data: evtsRef.current,
+        owner_email: (await sb.auth.getUser()).data?.user?.email || "",
+        updated_at: new Date().toISOString(),
+      }, { onConflict: "id" });
+      if(error) throw error;
+      const link = "https://script-sable.vercel.app/#share/" + id;
+      await navigator.clipboard.writeText(link);
+      setShareState("copied");
+      setTimeout(()=>setShareState("idle"), 3000);
+    } catch(e) {
+      console.error(e);
+      setShareState("error");
+      setTimeout(()=>setShareState("idle"), 3000);
+    }
+  };
+
   if (!loaded) return <Spinner msg="Loading calendar..."/>;
   return (
     <div style={{flex:1,display:"flex",flexDirection:"column",gap:12,minHeight:0}}>
@@ -723,6 +855,13 @@ function Calendar({ userId }) {
           </div>
         </div>
       </div>
+      <button onClick={shareCalendar} disabled={shareState==="sharing"} style={{...btn(shareState==="copied"?"#1B6B35":shareState==="error"?"#888":C.r),borderRadius:12,padding:"11px",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexShrink:0}}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/>
+          <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/>
+        </svg>
+        {shareState==="sharing"?"Publishing...":shareState==="copied"?"✓ Link Copied!":shareState==="error"?"Error — try again":"Share Calendar"}
+      </button>
       {selKey ? (
         <div style={{display:"flex",flexDirection:"column",gap:10,flex:1,minHeight:0}}>
           <div style={{background:C.r,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",flexShrink:0}}>
@@ -1166,6 +1305,11 @@ export default function Script() {
   const [showSett, setShowSett] = useState(false);
   const [dark, setDark] = useState(()=>localStorage.getItem("script_dark")==="1");
   const [booting, setBooting] = useState(true);
+
+  // Hash-based routing — no server config needed
+  const hash = window.location.hash;
+  const hashShare = hash.match(/^#share\/(.+)$/);
+  if(hashShare) return <SharedCalendarView shareId={hashShare[1]}/>;
 
   useEffect(()=>{ localStorage.setItem("script_dark", dark?"1":"0"); },[dark]);
   useEffect(()=>{
