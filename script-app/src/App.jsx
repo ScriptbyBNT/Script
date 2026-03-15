@@ -130,6 +130,7 @@ const MCATS_EXPENSE = [
   {id:"Subscription", icon:(color,size)=><SvgSubscription color={color} size={size}/>, color:"#5C6BC0"},
   {id:"Medical",      icon:(color,size)=><SvgMedical color={color} size={size}/>,      color:"#AD1457"},
   {id:"Utilities",    icon:(color,size)=><SvgUtilities color={color} size={size}/>,    color:"#F57F17"},
+  {id:"Invest",       icon:(color,size)=><SvgInvestment color={color} size={size}/>,   color:"#00695C"},
   {id:"Other",        icon:(color,size)=><SvgOther color={color} size={size}/>,        color:"#546E7A"},
 ];
 const MCATS_INCOME = [
@@ -976,6 +977,7 @@ function Money({ userId }) {
   const [form, setForm] = useState({desc:"",amount:"",type:"Expense",cat:"Food",imgs:[]});
   const [open, setOpen] = useState(false);
   const [expandId, setExpandId] = useState(null);
+  const [editId, setEditId] = useState(null); // which txn is being edited
   const [lightbox, setLightbox] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [viewKey, setViewKey] = useState(curKey);
@@ -1015,7 +1017,7 @@ function Money({ userId }) {
 
   if (!loaded) return <Spinner msg="Loading transactions..."/>;
   return (
-    <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,paddingBottom:8}}>
+    <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,paddingBottom:8,minHeight:0}}>
       {/* Month navigator */}
       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"#fff",borderRadius:14,border:"1.5px solid "+C.bd,padding:"10px 16px",flexShrink:0}}>
         <button onClick={()=>keyIdx<allKeys.length-1&&setViewKey(allKeys[keyIdx+1])} disabled={keyIdx>=allKeys.length-1} style={{background:"none",border:"none",fontSize:20,cursor:keyIdx>=allKeys.length-1?"default":"pointer",color:keyIdx>=allKeys.length-1?"#ddd":C.r}}>‹</button>
@@ -1089,6 +1091,7 @@ function Money({ userId }) {
           "Gift":"Gift","gift":"Gift",
           "Refund":"Refund","refund":"Refund",
           "Other Income":"Other Income","Income":"Other Income",
+          "Invest":"Invest","invest":"Invest",
           "Other":"Other","other":"Other",
         };
         const catId = CAT_MAP[t.cat] || t.cat;
@@ -1122,10 +1125,36 @@ function Money({ userId }) {
             </div>
             {expanded && (
               <div style={{borderTop:"1px solid #f5f0ee",padding:"12px 15px 14px"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <div style={{fontSize:11,fontWeight:700,color:C.g,letterSpacing:.5,textTransform:"uppercase"}}>Receipts & Notes</div>
-                  <button onClick={()=>{S(allTxns.filter(x=>x.id!==t.id));setExpandId(null);}} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:12,fontWeight:700}}>Delete</button>
-                </div>
+                {/* Edit mode */}
+                {editId===t.id ? (
+                  <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                    <input style={inp} defaultValue={t.desc} id={"edit-desc-"+t.id} placeholder="Title"/>
+                    <textarea id={"edit-note-"+t.id} defaultValue={t.note||""} placeholder="Notes..." rows={3}
+                      style={{...inp,resize:"none",fontFamily:"inherit"}}/>
+                    <div style={{display:"flex",gap:8}}>
+                      <button onClick={()=>{
+                        const newDesc=document.getElementById("edit-desc-"+t.id).value.trim();
+                        const newNote=document.getElementById("edit-note-"+t.id).value;
+                        if(!newDesc) return;
+                        S(allTxns.map(x=>x.id===t.id?{...x,desc:newDesc,note:newNote}:x));
+                        setEditId(null);
+                      }} style={{...btn(),flex:1,fontSize:13,padding:"9px"}}>Save</button>
+                      <button onClick={()=>setEditId(null)} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",flex:1,fontSize:13,padding:"9px"}}>Cancel</button>
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{marginBottom:10}}>
+                    {t.note && <div style={{fontSize:13,color:C.k,lineHeight:1.5,marginBottom:8,padding:"8px 10px",background:"#f9f9f9",borderRadius:8,whiteSpace:"pre-wrap"}}>{t.note}</div>}
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                      <div style={{fontSize:11,fontWeight:700,color:C.g,letterSpacing:.5,textTransform:"uppercase"}}>Receipts</div>
+                      <div style={{display:"flex",gap:10}}>
+                        <button onClick={()=>setEditId(t.id)} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:12,fontWeight:700}}>Edit</button>
+                        <button onClick={()=>{S(allTxns.filter(x=>x.id!==t.id));setExpandId(null);}} style={{background:"none",border:"none",cursor:"pointer",color:"#aaa",fontSize:12,fontWeight:700}}>Delete</button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {/* Photos */}
                 <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
                   {imgs.map((img,i)=>(
                     <div key={img.id} style={{position:"relative",borderRadius:8,overflow:"hidden",border:"1.5px solid #E8D5D0"}}>
@@ -1148,13 +1177,19 @@ function Money({ userId }) {
       {/* Lightbox */}
       {lightbox&&(
         <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:1000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20}}>
-          <img src={lightbox.imgs[lightbox.idx].data} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"70vh",borderRadius:12,objectFit:"contain"}}/>
-          <div style={{display:"flex",gap:16,marginTop:16,alignItems:"center"}}>
+          <img src={lightbox.imgs[lightbox.idx].data} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"65vh",borderRadius:12,objectFit:"contain"}}/>
+          <div style={{display:"flex",gap:12,marginTop:16,alignItems:"center"}}>
             {lightbox.idx>0&&<button onClick={e=>{e.stopPropagation();setLightbox({...lightbox,idx:lightbox.idx-1});}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"10px 18px",color:"#fff",cursor:"pointer",fontSize:16}}>‹</button>}
             <span style={{color:"rgba(255,255,255,.45)",fontSize:12}}>{lightbox.idx+1} / {lightbox.imgs.length}</span>
             {lightbox.idx<lightbox.imgs.length-1&&<button onClick={e=>{e.stopPropagation();setLightbox({...lightbox,idx:lightbox.idx+1});}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"10px 18px",color:"#fff",cursor:"pointer",fontSize:16}}>›</button>}
           </div>
-          <button onClick={()=>setLightbox(null)} style={{marginTop:14,background:"rgba(255,255,255,.1)",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,padding:"10px 24px",color:"#fff",cursor:"pointer"}}>Close</button>
+          <div style={{display:"flex",gap:10,marginTop:12}}>
+            <a href={lightbox.imgs[lightbox.idx].data} download={lightbox.imgs[lightbox.idx].name||"receipt.jpg"} onClick={e=>e.stopPropagation()}
+              style={{background:"rgba(255,255,255,.15)",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,padding:"10px 20px",color:"#fff",cursor:"pointer",textDecoration:"none",fontSize:13,fontWeight:700}}>
+              ⬇ Save Photo
+            </a>
+            <button onClick={()=>setLightbox(null)} style={{background:"rgba(255,255,255,.1)",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,padding:"10px 20px",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>Close</button>
+          </div>
         </div>
       )}
     </div>
@@ -1339,13 +1374,13 @@ function Settings({ user, dark, setDark, onClose }) {
             <div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
               <div style={{fontSize:13,fontWeight:700,color:txt,marginBottom:2}}>Change Email</div>
               <input style={II} type="email" value={newEmail} onChange={e=>setNewEmail(e.target.value)} placeholder="New email address"/>
-              <button onClick={saveEmail} disabled={loading} style={{...btn(),width:"100%",opacity:loading?.7:1}}>Update Email</button>
+              <button onClick={saveEmail} disabled={loading} style={{...btn(),width:"100%",opacity:loading?0.7:1}}>Update Email</button>
             </div>
             <div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:10}}>
               <div style={{fontSize:13,fontWeight:700,color:txt,marginBottom:2}}>Change Password</div>
               <input style={II} type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} placeholder="New password"/>
               <input style={II} type="password" value={confPass} onChange={e=>setConfPass(e.target.value)} placeholder="Confirm new password"/>
-              <button onClick={savePass} disabled={loading} style={{...btn(),width:"100%",opacity:loading?.7:1}}>Update Password</button>
+              <button onClick={savePass} disabled={loading} style={{...btn(),width:"100%",opacity:loading?0.7:1}}>Update Password</button>
             </div>
           </>}
           {tab === "appearance" && <>
@@ -1407,9 +1442,9 @@ export default function Script() {
   },[]);
 
   const D = dark ? {
-    pageBg: "#1C1C1E",
-    headerBg:"#2C2C2E",
-    border: "#3A3A3C",
+    pageBg: "#1A0000",
+    headerBg:"#2A0A0A",
+    border: "#4A1A1A",
     text: "#F2F2F7",
     sub: "#8E8E93",
   } : {
@@ -1438,8 +1473,8 @@ export default function Script() {
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100svh",background:D.pageBg,fontFamily:"'Nunito',sans-serif",overflow:"hidden",paddingTop:"env(safe-area-inset-top)"}}>
       {dark && <style>{`
-        input, select, textarea { background:#2C2C2E !important; color:#F2F2F7 !important; border-color:#3A3A3C !important; }
-        input::placeholder, textarea::placeholder { color:#636366 !important; }
+        input, select, textarea { background:#2A0A0A !important; color:#F2F2F7 !important; border-color:#4A1A1A !important; }
+        input::placeholder, textarea::placeholder { color:#886666 !important; }
       `}</style>}
       {/* Header */}
       <div style={{background:D.headerBg,borderBottom:"1.5px solid "+D.border,padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
