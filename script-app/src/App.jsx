@@ -143,7 +143,7 @@ const MCATS_INCOME = [
 ];
 const MCATS = [...MCATS_EXPENSE, ...MCATS_INCOME];
 
-const inp = {padding:"10px 13px",borderRadius:10,border:"1.5px solid #E8D5D0",fontSize:14,width:"100%",outline:"none",background:"#fff",color:"#1C1C1E",boxSizing:"border-box"};
+const inp = {padding:"10px 13px",borderRadius:10,border:"1.5px solid #E8D5D0",fontSize:16,width:"100%",outline:"none",background:"#fff",color:"#1C1C1E",boxSizing:"border-box"};
 const btn = (bg=C.r,col="#fff")=>({background:bg,color:col,border:"none",borderRadius:10,padding:"11px 18px",fontWeight:700,fontSize:14,cursor:"pointer"});
 const pill = (on,color=C.r)=>({padding:"6px 14px",borderRadius:20,border:"1.5px solid "+(on?color:"#E8D5D0"),background:on?color:"#fff",color:on?"#fff":"#7A7A7A",fontWeight:700,fontSize:13,cursor:"pointer"});
 const card = {background:"#fff",border:"1.5px solid #E8D5D0",borderRadius:14,padding:"13px 15px",display:"flex",alignItems:"center",gap:12};
