@@ -926,7 +926,7 @@ function Money({ userId }) {
         const expanded=expandId===t.id, imgs=t.imgs||[];
         const isEditing=editId===t.id;
         return(
-          <div key={t.id} style={{background:"#fff",border:"1.5px solid "+txColor+"44",borderRadius:14,overflow:"hidden"}}>
+          <div key={t.id} style={{background:"#fff",border:"1.5px solid "+txColor+"44",borderRadius:14}}>
             <div onClick={()=>{ setExpandId(expanded?null:t.id); if(!expanded){setEditId(null);} }} style={{display:"flex",alignItems:"center",gap:12,padding:"13px 15px",cursor:"pointer"}}>
               <div style={{width:44,height:44,borderRadius:12,background:txColor,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                 {typeof catObj.icon==="function"?catObj.icon("#fff",20):<span style={{fontSize:11,fontWeight:900,color:"#fff"}}>{isIncome?"INC":"EXP"}</span>}
@@ -1095,6 +1095,47 @@ function Health({ userId }) {
         {tab==="meds"&&meds.map(m=><HealthHCard key={m.id} item={m} list={meds} setList={Sm} saveKey="meds" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} onEdit={(item)=>{setEditItemId(item.id);setEditItemData({...item});setExpandId(item.id);}} onDel={()=>Sm(meds.filter(x=>x.id!==m.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#E8F8F0",color:"#1B5E20"}}>{m.name?.[0]?.toUpperCase()||"M"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{m.name}</div><div style={{fontSize:12,color:C.g}}>{m.dosage}{m.frequency?` • ${m.frequency}`:""}</div></HealthHCard>)}
         {((tab==="docs"&&!docs.length)||(tab==="apts"&&!apts.length)||(tab==="meds"&&!meds.length))&&<div style={{textAlign:"center",color:C.g,padding:40,fontSize:14}}>Nothing here yet.</div>}
       </div>
+      {editItemId&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:500,display:"flex",alignItems:"flex-end"}} onClick={()=>setEditItemId(null)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxHeight:"80vh",overflowY:"auto",padding:"20px 20px 40px"}}>
+            <div style={{fontWeight:900,fontSize:17,color:C.k,marginBottom:16}}>
+              {tab==="docs"?"Edit Doctor":tab==="apts"?"Edit Appointment":"Edit Medication"}
+            </div>
+            <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {tab==="docs"&&<>
+                <input style={inp} value={editItemData.name||""} onChange={e=>setEditItemData(f=>({...f,name:e.target.value}))} placeholder="Doctor Name"/>
+                <input style={inp} value={editItemData.specialty||""} onChange={e=>setEditItemData(f=>({...f,specialty:e.target.value}))} placeholder="Specialty"/>
+                <input style={inp} value={editItemData.phone||""} onChange={e=>setEditItemData(f=>({...f,phone:e.target.value}))} placeholder="Phone"/>
+                <input style={inp} value={editItemData.address||""} onChange={e=>setEditItemData(f=>({...f,address:e.target.value}))} placeholder="Address"/>
+                <input style={inp} value={editItemData.notes||""} onChange={e=>setEditItemData(f=>({...f,notes:e.target.value}))} placeholder="Notes"/>
+              </>}
+              {tab==="apts"&&<>
+                <input style={inp} value={editItemData.title||""} onChange={e=>setEditItemData(f=>({...f,title:e.target.value}))} placeholder="Appointment"/>
+                <input style={inp} value={editItemData.doctor||""} onChange={e=>setEditItemData(f=>({...f,doctor:e.target.value}))} placeholder="Doctor"/>
+                <input style={inp} value={editItemData.date||""} onChange={e=>setEditItemData(f=>({...f,date:e.target.value}))} placeholder="Date"/>
+                <input style={inp} value={editItemData.location||""} onChange={e=>setEditItemData(f=>({...f,location:e.target.value}))} placeholder="Location"/>
+                <input style={inp} value={editItemData.notes||""} onChange={e=>setEditItemData(f=>({...f,notes:e.target.value}))} placeholder="Notes"/>
+              </>}
+              {tab==="meds"&&<>
+                <input style={inp} value={editItemData.name||""} onChange={e=>setEditItemData(f=>({...f,name:e.target.value}))} placeholder="Medication"/>
+                <input style={inp} value={editItemData.dosage||""} onChange={e=>setEditItemData(f=>({...f,dosage:e.target.value}))} placeholder="Dosage"/>
+                <input style={inp} value={editItemData.frequency||""} onChange={e=>setEditItemData(f=>({...f,frequency:e.target.value}))} placeholder="Frequency"/>
+                <input style={inp} value={editItemData.prescriber||""} onChange={e=>setEditItemData(f=>({...f,prescriber:e.target.value}))} placeholder="Prescriber"/>
+                <input style={inp} value={editItemData.notes||""} onChange={e=>setEditItemData(f=>({...f,notes:e.target.value}))} placeholder="Notes"/>
+              </>}
+            </div>
+            <div style={{display:"flex",gap:8,marginTop:16}}>
+              <button onClick={()=>{
+                if(tab==="docs") Sd(docs.map(x=>x.id===editItemId?{...x,...editItemData}:x));
+                else if(tab==="apts") Sa(apts.map(x=>x.id===editItemId?{...x,...editItemData}:x));
+                else Sm(meds.map(x=>x.id===editItemId?{...x,...editItemData}:x));
+                setEditItemId(null);
+              }} style={{...btn(),flex:1}}>Save</button>
+              <button onClick={()=>setEditItemId(null)} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",flex:1}}>Cancel</button>
+            </div>
+          </div>
+        </div>
+      )}
       {lightbox&&(
         <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:1000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20}}>
           <img src={lightbox.imgs[lightbox.idx].data} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"70vh",borderRadius:12,objectFit:"contain"}}/>
