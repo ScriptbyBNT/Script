@@ -631,12 +631,39 @@ function Lists({ userId }) {
   );
 }
 
+function CalendarNote({ selKey, evtsRef, userId }) {
+  // Isolated component — only mounts/unmounts when selKey changes via key prop
+  // Uses local state seeded once from evtsRef on mount
+  const [val, setVal] = useState(()=> evtsRef.current[selKey] || "");
+  const saveTimer = useRef(null);
+
+  const onChange = e => {
+    const v = e.target.value;
+    setVal(v);
+    evtsRef.current = {...evtsRef.current, [selKey]: v};
+    clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(()=>{ dbSave(userId,"cal", evtsRef.current); }, 800);
+  };
+
+  useEffect(()=>{
+    return ()=>{ clearTimeout(saveTimer.current); dbSave(userId,"cal", evtsRef.current); };
+  },[]);
+
+  return (
+    <textarea
+      value={val}
+      onChange={onChange}
+      placeholder="Notes for this day..."
+      style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:16,resize:"none",outline:"none",fontFamily:"inherit",background:"#fff",color:"#1C1C1E"}}
+    />
+  );
+}
+
 function Calendar({ userId }) {
   const [evts, setEvts] = useState({});
   const [cal, setCal] = useState(()=>{ const n=new Date(); return new Date(n.getFullYear(),n.getMonth(),1); });
-  const [selKey, setSelKey] = useState(null); // "YYYY-M-D" — single source of truth
+  const [selKey, setSelKey] = useState(null);
   const evtsRef = useRef({});
-  const saveTimer = useRef(null);
   const [loaded, setLoaded] = useState(false);
   const now = new Date();
 
@@ -651,47 +678,15 @@ function Calendar({ userId }) {
 
   const y = cal.getFullYear(), m = cal.getMonth();
   const dim = new Date(y,m+1,0).getDate(), fd = new Date(y,m,1).getDay();
-
-  // Always build the key from explicit yr/mo/day — never from closure
   const makeKey = (day, yr, mo) => yr+"-"+(mo+1)+"-"+day;
 
-  const selectDay = (day) => {
-    // Flush any pending save immediately
-    clearTimeout(saveTimer.current);
-    if(selKey !== null) {
-      dbSave(userId,"cal", evtsRef.current);
-    }
-    setSelKey(makeKey(day, y, m));
+  const selectDay = day => {
+    const key = makeKey(day, y, m);
+    setSelKey(key);
   };
 
-  const onNoteChange = val => {
-    if(!selKey) return;
-    const updated = {...evtsRef.current, [selKey]: val};
-    evtsRef.current = updated;
-    setEvts({...updated});
-    clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(()=>{ dbSave(userId,"cal", evtsRef.current); }, 800);
-  };
-
-  // Parse selKey back to display values — never use stale closure m/y
   const selParts = selKey ? selKey.split("-").map(Number) : null;
   const selMonth = selParts?.[1], selDay = selParts?.[2];
-
-  // Controlled note value — explicitly reset when selKey changes
-  const [noteVal, setNoteVal] = useState("");
-  const prevSelKey = useRef(null);
-  if(prevSelKey.current !== selKey) {
-    prevSelKey.current = selKey;
-    // Synchronously update noteVal during render to avoid flash of wrong content
-  }
-  useEffect(()=>{
-    setNoteVal(selKey ? (evtsRef.current[selKey] || "") : "");
-  }, [selKey]);
-
-  const handleNoteChange = val => {
-    setNoteVal(val);
-    onNoteChange(val);
-  };
 
   if (!loaded) return <Spinner msg="Loading calendar..."/>;
   return (
@@ -735,13 +730,7 @@ function Calendar({ userId }) {
               <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{selDay}</div>
             </div>
           </div>
-          <textarea
-            key={selKey}
-            value={noteVal}
-            onChange={e=>handleNoteChange(e.target.value)}
-            placeholder="Notes for this day..."
-            style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid "+C.bd,fontSize:16,resize:"none",outline:"none",fontFamily:"inherit",background:"#fff",color:C.k}}
-          />
+          <CalendarNote key={selKey} selKey={selKey} evtsRef={evtsRef} userId={userId}/>
         </div>
       ) : (
         <div style={{textAlign:"center",color:C.g,padding:24,fontSize:14}}>Tap a day to add notes</div>
