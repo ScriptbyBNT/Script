@@ -124,18 +124,27 @@ async function deleteInboxItem(id) {
 // ── SHARE MODAL ──
 function ShareModal({ title, onSend, onClose }) {
   const [email, setEmail] = useState("");
-  const [state, setState] = useState("idle"); // idle | sending | sent | error
+  const [state, setState] = useState("idle");
   const [errMsg, setErrMsg] = useState("");
+  const [recents, setRecents] = useState(()=>{ try{ return JSON.parse(localStorage.getItem("script_recents")||"[]"); }catch(e){ return []; } });
 
-  const send = async () => {
-    if (!email.trim()) return;
+  const saveRecent = (em) => {
+    const updated = [em, ...recents.filter(r=>r!==em)].slice(0,6);
+    setRecents(updated);
+    try{ localStorage.setItem("script_recents", JSON.stringify(updated)); }catch(e){}
+  };
+
+  const send = async (toEmail) => {
+    const addr = (toEmail||email).trim().toLowerCase();
+    if (!addr) return;
     setState("sending");
-    const err = await onSend(email.trim().toLowerCase());
+    const err = await onSend(addr);
     if (err) {
-      setErrMsg(err.message || "Failed to send");
+      setErrMsg(err.message || "User not found or failed to send");
       setState("error");
       setTimeout(() => setState("idle"), 3000);
     } else {
+      saveRecent(addr);
       setState("sent");
       setTimeout(() => { setState("idle"); onClose(); }, 2000);
     }
@@ -148,7 +157,19 @@ function ShareModal({ title, onSend, onClose }) {
           <div style={{width:40,height:4,borderRadius:2,background:"#E8D5D0"}}/>
         </div>
         <div style={{fontWeight:900,fontSize:17,color:C.k,marginBottom:4}}>Share "{title}"</div>
-        <div style={{fontSize:13,color:C.g,marginBottom:16}}>Send to another Script user by email</div>
+        <div style={{fontSize:13,color:C.g,marginBottom:12}}>Send to another Script user by email</div>
+        {recents.length>0&&(
+          <div style={{marginBottom:14}}>
+            <div style={{fontSize:11,color:C.g,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Recent</div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
+              {recents.map(r=>(
+                <button key={r} onClick={()=>send(r)} style={{padding:"6px 12px",borderRadius:20,border:"1.5px solid #E8D5D0",background:"#fff",color:C.k,fontSize:12,fontWeight:600,cursor:"pointer",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                  {r}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
         <input
           type="email"
           value={email}
@@ -160,7 +181,7 @@ function ShareModal({ title, onSend, onClose }) {
         />
         {state==="error" && <div style={{color:"#ff6060",fontSize:13,marginBottom:10}}>{errMsg}</div>}
         <div style={{display:"flex",gap:8}}>
-          <button onClick={send} disabled={state==="sending"||state==="sent"} style={{...btn(state==="sent"?"#1B6B35":C.r),flex:1}}>
+          <button onClick={()=>send()} disabled={state==="sending"||state==="sent"} style={{...btn(state==="sent"?"#1B6B35":C.r),flex:1}}>
             {state==="sending"?"Sending...":state==="sent"?"✓ Sent!":"Send"}
           </button>
           <button onClick={onClose} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",flex:1}}>Cancel</button>
@@ -1396,9 +1417,9 @@ export default function Script() {
         <App userId={user.id} dark={dark} userEmail={user.email||""}/>
       </div>
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
-        <div style={{display:"flex"}}>
+        <div style={{display:"flex",paddingTop:8}}>
           {NAV.map(n=>{ const on=active===n.id; return(
-            <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:4,paddingBottom:4,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"background .15s"}}>
+            <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:2,paddingBottom:2,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"background .15s"}}>
               <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
               <span style={{fontSize:9,fontWeight:800,color:on?"#fff":n.color,letterSpacing:.3,textTransform:"uppercase"}}>{n.label}</span>
             </button>
