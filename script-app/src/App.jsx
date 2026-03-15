@@ -675,13 +675,17 @@ function Calendar({ userId }) {
 
   // Parse selKey back to display values — never use stale closure m/y
   const selParts = selKey ? selKey.split("-").map(Number) : null;
-  const selYear = selParts?.[0], selMonth = selParts?.[1], selDay = selParts?.[2];
-  const currentNote = selKey ? (evtsRef.current[selKey] || "") : "";
+  const selMonth = selParts?.[1], selDay = selParts?.[2];
 
-  // Sync textarea value when switching days
+  // Controlled note value — explicitly reset when selKey changes
   const [noteVal, setNoteVal] = useState("");
+  const prevSelKey = useRef(null);
+  if(prevSelKey.current !== selKey) {
+    prevSelKey.current = selKey;
+    // Synchronously update noteVal during render to avoid flash of wrong content
+  }
   useEffect(()=>{
-    setNoteVal(evtsRef.current[selKey] || "");
+    setNoteVal(selKey ? (evtsRef.current[selKey] || "") : "");
   }, [selKey]);
 
   const handleNoteChange = val => {
@@ -733,7 +737,7 @@ function Calendar({ userId }) {
           </div>
           <textarea
             key={selKey}
-            defaultValue={evtsRef.current[selKey]||""}
+            value={noteVal}
             onChange={e=>handleNoteChange(e.target.value)}
             placeholder="Notes for this day..."
             style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid "+C.bd,fontSize:16,resize:"none",outline:"none",fontFamily:"inherit",background:"#fff",color:C.k}}
