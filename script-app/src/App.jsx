@@ -188,7 +188,24 @@ function InboxModal({ items, onAccept, onDismiss, onClose }) {
                 {" · "}{item.type==="list"?"List":item.type==="note"?"Note":"Calendar"}
               </div>
               <div style={{display:"flex",gap:8}}>
-                <button onClick={()=>onAccept(item)} style={{...btn(),flex:1,fontSize:13,padding:"9px"}}>Add to my {item.type==="list"?"Lists":item.type==="note"?"Chalk":"Calendar"}</button>
+                {item.type==="calendar" ? (
+                <div style={{display:"flex",flexDirection:"column",gap:6,width:"100%"}}>
+                  <div style={{fontSize:12,color:C.g,marginBottom:4}}>{Object.keys(item.data||{}).length} day(s) with notes</div>
+                  {Object.entries(item.data||{}).slice(0,5).map(([k,v])=>(
+                    <div key={k} style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"rgba(0,0,0,.04)",borderRadius:8,padding:"6px 10px"}}>
+                      <div style={{fontSize:13,color:C.k,flex:1,minWidth:0}}>
+                        <span style={{fontWeight:700}}>{k}</span>
+                        <span style={{color:C.g,marginLeft:6,fontSize:11,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",display:"inline-block",maxWidth:120}}>{v.slice(0,40)}</span>
+                      </div>
+                      <button onClick={()=>onAccept({...item,type:"calendar_day",dayKey:k,data:v})} style={{...btn(),fontSize:11,padding:"4px 10px",borderRadius:8,flexShrink:0}}>Save</button>
+                    </div>
+                  ))}
+                  {Object.keys(item.data||{}).length>5&&<div style={{fontSize:11,color:C.g,textAlign:"center"}}>+{Object.keys(item.data).length-5} more days</div>}
+                  <button onClick={()=>onAccept(item)} style={{...btn(),fontSize:13,padding:"9px",marginTop:4}}>Save All Days</button>
+                </div>
+              ) : (
+                <button onClick={()=>onAccept(item)} style={{...btn(),flex:1,fontSize:13,padding:"9px"}}>Add to my {item.type==="list"?"Lists":"Chalk"}</button>
+              )}
                 <button onClick={()=>onDismiss(item.id)} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",flex:1,fontSize:13,padding:"9px"}}>Dismiss</button>
               </div>
             </div>
@@ -381,10 +398,8 @@ function Chalk({ userId, dark, userEmail }) {
               <button key={m} onClick={()=>setMode(m)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:mode===m?"rgba(255,255,255,.18)":"transparent",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>{l}</button>
             ))}
           </div>
-          {mode==="type"&&<button onClick={()=>setShowShare(true)} style={{padding:"4px 10px",borderRadius:6,border:"none",background:"rgba(255,255,255,.12)",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>⬆ Share</button>}
         </div>
       </div>
-      {showShare&&<ShareModal title="My Notes" onClose={()=>setShowShare(false)} onSend={async(toEmail)=>sendShared(userEmail,toEmail,"note","Chalk Notes",text)}/>}
       {mode==="draw"&&(
         <div style={{flexShrink:0,background:"rgba(0,0,0,.18)",borderBottom:"1px solid rgba(0,0,0,.15)",padding:"8px 12px",display:"flex",alignItems:"center",gap:10}}>
           <div style={{display:"flex",gap:6,alignItems:"center"}}>
@@ -413,6 +428,8 @@ function Chalk({ userId, dark, userEmail }) {
             style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none",background:"#6b8c52"}}
           />
         )}
+        {showShare&&<ShareModal title="My Notes" onClose={()=>setShowShare(false)} onSend={async(toEmail)=>sendShared(userEmail,toEmail,"note","Chalk Notes",text)}/>}
+        {mode==="type"&&<button onClick={()=>setShowShare(true)} style={{position:"absolute",bottom:16,left:16,background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:24,padding:"10px 16px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",backdropFilter:"blur(4px)"}}>⬆ Share Note</button>}
         <div style={{position:"absolute",bottom:16,right:16,display:"flex",gap:10,alignItems:"center"}}>
           {mode==="draw"&&(
             <button onClick={eraseLast} style={{width:48,height:48,borderRadius:"50%",background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -968,28 +985,6 @@ function Money({ userId }) {
           </div>
         );
       })}
-      {editItemId&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:500,display:"flex",alignItems:"flex-end"}} onClick={()=>setEditItemId(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxHeight:"80vh",overflowY:"auto",padding:"20px 20px 40px"}}>
-            <div style={{fontWeight:900,fontSize:17,color:C.k,marginBottom:16}}>Edit</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {Object.keys(editItemData).filter(k=>k!=="id"&&k!=="imgs").map(k=>(
-                <input key={k} style={inp} value={editItemData[k]||""} onChange={e=>setEditItemData(f=>({...f,[k]:e.target.value}))} placeholder={k.charAt(0).toUpperCase()+k.slice(1)}/>
-              ))}
-            </div>
-            <div style={{display:"flex",gap:8,marginTop:16}}>
-              <button onClick={()=>{
-                const saveMap={"docs":Sd,"apts":Sa,"meds":Sm};
-                const listMap={"docs":docs,"apts":apts,"meds":meds};
-                const fn=saveMap[tab], lst=listMap[tab];
-                if(fn&&lst) fn(lst.map(x=>x.id===editItemId?{...x,...editItemData}:x));
-                setEditItemId(null);
-              }} style={{...btn(),flex:1}}>Save</button>
-              <button onClick={()=>setEditItemId(null)} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",flex:1}}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
       {lightbox&&(
         <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:1000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20}}>
           <img src={lightbox.imgs[lightbox.idx].data} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"65vh",borderRadius:12,objectFit:"contain"}}/>
@@ -1100,28 +1095,6 @@ function Health({ userId }) {
         {tab==="meds"&&meds.map(m=><HealthHCard key={m.id} item={m} list={meds} setList={Sm} saveKey="meds" userId={userId} expandId={expandId} setExpandId={setExpandId} setLightbox={setLightbox} onEdit={(item)=>{setEditItemId(item.id);setEditItemData({...item});setExpandId(item.id);}} onDel={()=>Sm(meds.filter(x=>x.id!==m.id))} labelEl={<div style={{...lbl,fontSize:15,background:"#E8F8F0",color:"#1B5E20"}}>{m.name?.[0]?.toUpperCase()||"M"}</div>}><div style={{fontWeight:700,fontSize:14,color:C.k}}>{m.name}</div><div style={{fontSize:12,color:C.g}}>{m.dosage}{m.frequency?` • ${m.frequency}`:""}</div></HealthHCard>)}
         {((tab==="docs"&&!docs.length)||(tab==="apts"&&!apts.length)||(tab==="meds"&&!meds.length))&&<div style={{textAlign:"center",color:C.g,padding:40,fontSize:14}}>Nothing here yet.</div>}
       </div>
-      {editItemId&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:500,display:"flex",alignItems:"flex-end"}} onClick={()=>setEditItemId(null)}>
-          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxHeight:"80vh",overflowY:"auto",padding:"20px 20px 40px"}}>
-            <div style={{fontWeight:900,fontSize:17,color:C.k,marginBottom:16}}>Edit</div>
-            <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {Object.keys(editItemData).filter(k=>k!=="id"&&k!=="imgs").map(k=>(
-                <input key={k} style={inp} value={editItemData[k]||""} onChange={e=>setEditItemData(f=>({...f,[k]:e.target.value}))} placeholder={k.charAt(0).toUpperCase()+k.slice(1)}/>
-              ))}
-            </div>
-            <div style={{display:"flex",gap:8,marginTop:16}}>
-              <button onClick={()=>{
-                const saveMap={"docs":Sd,"apts":Sa,"meds":Sm};
-                const listMap={"docs":docs,"apts":apts,"meds":meds};
-                const fn=saveMap[tab], lst=listMap[tab];
-                if(fn&&lst) fn(lst.map(x=>x.id===editItemId?{...x,...editItemData}:x));
-                setEditItemId(null);
-              }} style={{...btn(),flex:1}}>Save</button>
-              <button onClick={()=>setEditItemId(null)} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",flex:1}}>Cancel</button>
-            </div>
-          </div>
-        </div>
-      )}
       {lightbox&&(
         <div onClick={()=>setLightbox(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:1000,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20}}>
           <img src={lightbox.imgs[lightbox.idx].data} alt="" onClick={e=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"70vh",borderRadius:12,objectFit:"contain"}}/>
@@ -1271,11 +1244,19 @@ export default function Script() {
       await dbSave(user.id,"lists",[...existing,nl]);
       setActive("lists");
     } else if(item.type==="calendar") {
-      // Merge calendar
+      // For calendar: save all days
       const existing = await dbLoad(user.id,"cal")||{};
       const merged={...existing};
       Object.entries(item.data||{}).forEach(([k,v])=>{ merged[k]=merged[k]?merged[k]+"\n--- From "+item.from_email+" ---\n"+v:v; });
       await dbSave(user.id,"cal",merged);
+      setActive("calendar");
+    } else if(item.type==="calendar_day") {
+      // Save single day
+      const existing = await dbLoad(user.id,"cal")||{};
+      const key = item.dayKey;
+      const note = item.data;
+      existing[key]=existing[key]?existing[key]+"\n--- From "+item.from_email+" ---\n"+note:note;
+      await dbSave(user.id,"cal",existing);
       setActive("calendar");
     }
     await deleteInboxItem(item.id);
