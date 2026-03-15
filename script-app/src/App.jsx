@@ -772,7 +772,7 @@ function SharedCalendarView({ shareId }) {
             </div>
           </div>
         </div>
-        {selKey&&evts[selKey]?.trim() ? (
+        {selKey&&(data?.data||{})[selKey]?.trim() ? (
           <div style={{display:"flex",flexDirection:"column",gap:10,flex:1}}>
             <div style={{background:C.r,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
               <div>
@@ -791,7 +791,7 @@ function SharedCalendarView({ shareId }) {
                 )}
               </button>
             </div>
-            <div style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:15,background:"#fff",color:C.k,lineHeight:1.6,minHeight:120,whiteSpace:"pre-wrap"}}>{evts[selKey]}</div>
+            <div style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:15,background:"#fff",color:C.k,lineHeight:1.6,minHeight:120,whiteSpace:"pre-wrap"}}>{(data?.data||{})[selKey]}</div>
           </div>
         ) : selKey ? (
           <div style={{textAlign:"center",color:C.g,padding:24,fontSize:14}}>No notes for this day</div>
@@ -1442,7 +1442,7 @@ export default function Script() {
   const {App}=cur;
 
   return(
-    <div style={{display:"flex",flexDirection:"column",height:"100svh",background:D.pageBg,fontFamily:"'Nunito',sans-serif",overflow:"hidden"}}>
+    <div style={{display:"flex",flexDirection:"column",height:"100svh",background:D.pageBg,fontFamily:"'Nunito',sans-serif",overflow:"hidden",paddingTop:"env(safe-area-inset-top)"}}>
       {dark && <style>{`
         input, select, textarea { background:#2C2C2E !important; color:#F2F2F7 !important; border-color:#3A3A3C !important; }
         input::placeholder, textarea::placeholder { color:#636366 !important; }
@@ -1495,11 +1495,11 @@ export default function Script() {
         <App userId={user.id}/>
       </div>
 
-      {/* Bottom nav */}
+      {/* Bottom nav — paddingBottom respects iPhone home bar */}
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,display:"flex",flexShrink:0}}>
         {NAV.map(n=>{
           const on=active===n.id;
-          return(<button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,padding:"10px 4px 10px",border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"background .15s"}}>
+          return(<button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:10,paddingBottom:"max(10px, env(safe-area-inset-bottom))",paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:3,transition:"background .15s"}}>
             <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
             <span style={{fontSize:9,fontWeight:800,color:on?"#fff":n.color,letterSpacing:.3,textTransform:"uppercase"}}>{n.label}</span>
           </button>);
