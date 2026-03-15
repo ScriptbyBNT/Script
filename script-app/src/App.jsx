@@ -637,14 +637,21 @@ function SharedCalendarView({ shareId }) {
   const [selKey, setSelKey] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const [notFound, setNotFound] = useState(false);
+  // Auth state for "Add to My Calendar"
+  const [user, setUser] = useState(null);
+  const [addState, setAddState] = useState("idle"); // idle | adding | added | error
+  const [showLogin, setShowLogin] = useState(false);
   const now = new Date();
 
   useEffect(()=>{
+    sb.auth.getSession().then(({data:s})=>{ if(s?.session?.user) setUser(s.session.user); });
+    const {data:listener} = sb.auth.onAuthStateChange((_,session)=>{ setUser(session?.user??null); });
     sb.from("shared_calendars").select("data,owner_email").eq("id",shareId).single()
       .then(({data:row,error})=>{
         if(error||!row){ setNotFound(true); setLoaded(true); return; }
         setData(row); setLoaded(true);
       });
+    return ()=>listener.subscription.unsubscribe();
   },[shareId]);
 
   const y=cal.getFullYear(), m=cal.getMonth();
@@ -652,6 +659,33 @@ function SharedCalendarView({ shareId }) {
   const makeKey=(day,yr,mo)=>yr+"-"+(mo+1)+"-"+day;
   const selParts=selKey?selKey.split("-").map(Number):null;
   const selMonth=selParts?.[1], selDay=selParts?.[2];
+
+  const addToMyCalendar = async () => {
+    if(!user) { setShowLogin(true); return; }
+    if(!selKey) return;
+    setAddState("adding");
+    try {
+      // Load the user's existing calendar data
+      const existing = await dbLoad(user.id, "cal") || {};
+      // Merge — append to existing note if there is one
+      const sharedNote = data?.data?.[selKey] || "";
+      const existingNote = existing[selKey] || "";
+      const merged = existingNote
+        ? existingNote + "
+
+--- Added from shared calendar ---
+" + sharedNote
+        : sharedNote;
+      const updated = {...existing, [selKey]: merged};
+      await dbSave(user.id, "cal", updated);
+      setAddState("added");
+      setTimeout(()=>setAddState("idle"), 3000);
+    } catch(e) {
+      console.error(e);
+      setAddState("error");
+      setTimeout(()=>setAddState("idle"), 3000);
+    }
+  };
 
   if(!loaded) return(
     <div style={{minHeight:"100svh",background:C.r,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -678,6 +712,7 @@ function SharedCalendarView({ shareId }) {
 
   return(
     <div style={{minHeight:"100svh",background:"#F5F0EE",fontFamily:"'Nunito',sans-serif",display:"flex",flexDirection:"column"}}>
+      {/* Header */}
       <div style={{background:"#fff",borderBottom:"1.5px solid #E8D5D0",padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:9}}>
           <div style={{width:28,height:28,borderRadius:8,background:C.r,display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -685,13 +720,28 @@ function SharedCalendarView({ shareId }) {
           </div>
           <span style={{fontFamily:"'Nunito',sans-serif",fontSize:18,fontWeight:900,color:C.r}}>Script</span>
         </div>
-        <div style={{fontSize:11,color:C.g,fontWeight:700,background:"#F5F0EE",padding:"4px 10px",borderRadius:20}}>READ ONLY</div>
+        {user
+          ? <div style={{fontSize:12,color:C.g,fontWeight:600}}>Signed in as <span style={{color:C.k}}>{user.email}</span></div>
+          : <button onClick={()=>setShowLogin(true)} style={{...btn(),padding:"7px 14px",fontSize:12,borderRadius:20}}>Sign In</button>
+        }
       </div>
       {data?.owner_email&&(
         <div style={{background:"#fff",borderBottom:"1.5px solid #E8D5D0",padding:"8px 16px",fontSize:12,color:C.g}}>
           📅 Shared by <span style={{fontWeight:700,color:C.k}}>{data.owner_email}</span>
         </div>
       )}
+
+      {/* Sign-in prompt modal */}
+      {showLogin&&(
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:500,display:"flex",alignItems:"center",justifyContent:"center",padding:20}} onClick={()=>setShowLogin(false)}>
+          <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:20,padding:28,width:"100%",maxWidth:360}}>
+            <div style={{fontWeight:900,fontSize:18,color:C.k,marginBottom:4}}>Sign in to Script</div>
+            <div style={{fontSize:13,color:C.g,marginBottom:20}}>Sign in to add this event to your personal calendar.</div>
+            <SharedLoginForm onLogin={u=>{setUser(u);setShowLogin(false);}} />
+          </div>
+        </div>
+      )}
+
       <div style={{flex:1,padding:"14px 16px",display:"flex",flexDirection:"column",gap:12,maxWidth:500,width:"100%",margin:"0 auto",boxSizing:"border-box"}}>
         <div style={{background:"#fff",borderRadius:14,border:"1.5px solid #E8D5D0",overflow:"hidden",flexShrink:0}}>
           <div style={{background:"linear-gradient(135deg,#C8220A,#E03010)",padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -724,9 +774,22 @@ function SharedCalendarView({ shareId }) {
         </div>
         {selKey&&evts[selKey]?.trim() ? (
           <div style={{display:"flex",flexDirection:"column",gap:10,flex:1}}>
-            <div style={{background:C.r,borderRadius:14,padding:"12px 16px",flexShrink:0}}>
-              <div style={{color:"rgba(255,255,255,.6)",fontSize:11,letterSpacing:1}}>{selMonth!=null?MONTHS[selMonth-1].toUpperCase():""}</div>
-              <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{selDay}</div>
+            <div style={{background:C.r,borderRadius:14,padding:"12px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
+              <div>
+                <div style={{color:"rgba(255,255,255,.6)",fontSize:11,letterSpacing:1}}>{selMonth!=null?MONTHS[selMonth-1].toUpperCase():""}</div>
+                <div style={{fontFamily:"'Nunito',sans-serif",fontSize:30,fontWeight:900,color:"#fff"}}>{selDay}</div>
+              </div>
+              {/* Add to My Calendar button */}
+              <button onClick={addToMyCalendar} disabled={addState==="adding"} style={{background:addState==="added"?"rgba(255,255,255,.35)":"rgba(255,255,255,.2)",border:"1.5px solid rgba(255,255,255,.4)",borderRadius:10,padding:"8px 14px",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                {addState==="adding" ? "Adding..." : addState==="added" ? "✓ Added!" : addState==="error" ? "Error" : (
+                  <>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="12" y1="14" x2="12" y2="18"/><line x1="10" y1="16" x2="14" y2="16"/>
+                    </svg>
+                    Add to Mine
+                  </>
+                )}
+              </button>
             </div>
             <div style={{flex:1,padding:"14px 16px",borderRadius:14,border:"1.5px solid #E8D5D0",fontSize:15,background:"#fff",color:C.k,lineHeight:1.6,minHeight:120,whiteSpace:"pre-wrap"}}>{evts[selKey]}</div>
           </div>
@@ -736,6 +799,29 @@ function SharedCalendarView({ shareId }) {
           <div style={{textAlign:"center",color:C.g,padding:24,fontSize:14}}>Tap a day with a dot to read notes</div>
         )}
       </div>
+    </div>
+  );
+}
+
+// Minimal login form used inside the shared calendar view
+function SharedLoginForm({ onLogin }) {
+  const [email, setEmail] = useState("");
+  const [pass, setPass] = useState("");
+  const [err, setErr] = useState("");
+  const [loading, setLoading] = useState(false);
+  const go = async () => {
+    setErr(""); setLoading(true);
+    const { data, error } = await sb.auth.signInWithPassword({ email: email.trim(), password: pass });
+    if(error) { setErr(error.message); setLoading(false); return; }
+    onLogin(data.user);
+  };
+  const II = {width:"100%",padding:"12px 14px",borderRadius:10,border:"1.5px solid #E8D5D0",fontSize:16,outline:"none",boxSizing:"border-box",marginBottom:10};
+  return(
+    <div>
+      <input type="email" value={email} onChange={e=>setEmail(e.target.value)} placeholder="Email" style={II}/>
+      <input type="password" value={pass} onChange={e=>setPass(e.target.value)} onKeyDown={e=>e.key==="Enter"&&go()} placeholder="Password" style={II}/>
+      {err&&<div style={{color:C.r,fontSize:12,marginBottom:10}}>{err}</div>}
+      <button onClick={go} disabled={loading} style={{...btn(),width:"100%",padding:"13px",fontSize:15}}>{loading?"Signing in...":"Sign In"}</button>
     </div>
   );
 }
