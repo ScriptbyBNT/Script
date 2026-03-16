@@ -104,15 +104,30 @@ async function sendShared(fromEmail, toEmail, type, title, data) {
   const from = fromEmail.trim().toLowerCase();
   const to   = toEmail.trim().toLowerCase();
 
-  // 1. Bell inbox
+  // 1. Bell inbox (always)
   const { error } = await sb.from("shared_inbox").insert({ from_email: from, to_email: to, type, title, data });
 
-  // 2. Also send as a chat message so it appears in Scrypt Chat conversation
-  // Look up both user IDs from user_profiles
-  const [{ data: fromProf }, { data: toProf }] = await Promise.all([
-    sb.from("user_profiles").select("id").eq("email", from).single(),
-    sb.from("user_profiles").select("id").eq("email", to).single(),
-  ]);
+  // 2. Chat message — look up sender profile (must exist since they are logged in)
+  const { data: fromProf } = await sb.from("user_profiles").select("id").eq("email", from).single();
+  if(!fromProf?.id) return error; // sender has no profile, bail
+
+  // Recipient profile — may not exist yet if they just signed up
+  let { data: toProf } = await sb.from("user_profiles").select("id").eq("email", to).single();
+
+  // If recipient has no profile yet, create a placeholder so the message can land
+  if(!toProf?.id) {
+    const placeholderId = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2));
+    await sb.from("user_profiles").upsert({
+      id: placeholderId,
+      email: to,
+      username: to.split("@")[0],
+      updated_at: new Date().toISOString()
+    }, { onConflict: "email" });
+    // Re-fetch after upsert
+    const { data: refetched } = await sb.from("user_profiles").select("id").eq("email", to).single();
+    toProf = refetched;
+  }
+
   if(fromProf?.id && toProf?.id) {
     await sb.from("messages").insert({
       from_id: fromProf.id,
@@ -1299,10 +1314,29 @@ function Health({ userId }) {
 // MESSAGING / CHAT
 // ──────────────────────────────────────────────
 async function getOrCreateProfile(userId, email) {
-  const { data } = await sb.from("user_profiles").select("*").eq("id", userId).single();
-  if (data) return data;
+  // First check if profile exists by user id
+  const { data: byId } = await sb.from("user_profiles").select("*").eq("id", userId).single();
+  if(byId) return byId;
+
+  // Check if a placeholder was created by email (someone shared to them before they logged in)
+  const { data: byEmail } = await sb.from("user_profiles").select("*").eq("email", email.toLowerCase()).single();
+  if(byEmail && byEmail.id !== userId) {
+    // Update placeholder row to use real auth user id
+    await sb.from("user_profiles").delete().eq("id", byEmail.id);
+  }
+
   const username = email.split("@")[0];
-  await sb.from("user_profiles").upsert({ id: userId, email, username, updated_at: new Date().toISOString() }, { onConflict: "id" });
+  await sb.from("user_profiles").upsert(
+    { id: userId, email: email.toLowerCase(), username, updated_at: new Date().toISOString() },
+    { onConflict: "id" }
+  );
+
+  // If there was a placeholder, repoint any messages sent to the placeholder id
+  if(byEmail && byEmail.id !== userId) {
+    await sb.from("messages").update({ to_id: userId }).eq("to_id", byEmail.id);
+    await sb.from("messages").update({ from_id: userId }).eq("from_id", byEmail.id);
+  }
+
   return { id: userId, email, username };
 }
 
@@ -2068,7 +2102,7 @@ export default function Script() {
         <App key={active==="chalk"?chalkKey:active} userId={user.id} dark={dark} userEmail={user.email||""} onSaveToChalk={handleSaveToChalk}/>
       </div>
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
-        <div style={{display:"flex",paddingTop:32}}>
+        <div style={{display:"flex",paddingTop:44}}>
           {NAV.map(n=>{ const on=active===n.id; return(
             <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:2,paddingBottom:2,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"background .15s"}}>
               <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
@@ -2076,7 +2110,7 @@ export default function Script() {
             </button>
           ); })}
         </div>
-        <div style={{height:64,background:D.headerBg}}/>
+        <div style={{height:72,background:D.headerBg}}/>
       </div>
       {showChat&&(
         <div style={{position:"fixed",inset:0,zIndex:800,background:D.pageBg,display:"flex",flexDirection:"column"}}>
