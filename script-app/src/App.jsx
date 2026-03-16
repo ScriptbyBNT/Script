@@ -1375,15 +1375,25 @@ async function loadMessages(myId, myEmail, otherId, otherEmail) {
     .or(`and(from_id.eq.${myId},to_id.eq.${otherId}),and(from_id.eq.${otherId},to_id.eq.${myId})`)
     .order("created_at", { ascending: true });
 
-  // Pending shared_chat items (shared before both had profiles)
-  const { data: pending } = await sb.from("shared_inbox")
+  // Pending shared_chat items — fetch all involving either email then filter in JS
+  // (avoids complex Supabase multi-column OR syntax issues)
+  const { data: pendingA } = await sb.from("shared_inbox")
     .select("*")
     .eq("type", "shared_chat")
-    .or(`and(from_email.eq.${myEmail},to_email.eq.${otherEmail}),and(from_email.eq.${otherEmail},to_email.eq.${myEmail})`)
+    .eq("from_email", myEmail)
+    .eq("to_email", otherEmail)
     .order("created_at", { ascending: true });
 
-  // Convert pending to message-like objects and merge, deduplicating by content+time
-  const pendingMsgs = (pending||[]).map(p=>({
+  const { data: pendingB } = await sb.from("shared_inbox")
+    .select("*")
+    .eq("type", "shared_chat")
+    .eq("from_email", otherEmail)
+    .eq("to_email", myEmail)
+    .order("created_at", { ascending: true });
+
+  const pending = [...(pendingA||[]), ...(pendingB||[])];
+
+  const pendingMsgs = pending.map(p=>({
     id: "pending_"+p.id,
     from_id: p.from_email===myEmail ? myId : otherId,
     to_id:   p.to_email===myEmail   ? myId : otherId,
@@ -1396,12 +1406,11 @@ async function loadMessages(myId, myEmail, otherId, otherEmail) {
     inbox_id: p.id,
   }));
 
-  // Merge: if a real message exists for same share, skip the pending one
-  const realSharedKeys = new Set((msgs||[]).filter(m=>m.type==="shared").map(m=>m.from_email+"_"+m.created_at?.slice(0,16)));
-  const filteredPending = pendingMsgs.filter(p=>!realSharedKeys.has(p.from_email+"_"+p.created_at?.slice(0,16)));
+  // Skip pending if a real message already covers it (dedup by sender+minute)
+  const realKeys = new Set((msgs||[]).filter(m=>m.type==="shared").map(m=>m.from_email+"_"+m.created_at?.slice(0,16)));
+  const filtered = pendingMsgs.filter(p=>!realKeys.has(p.from_email+"_"+p.created_at?.slice(0,16)));
 
-  const all = [...(msgs||[]), ...filteredPending].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
-  return all;
+  return [...(msgs||[]), ...filtered].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
 }
 
 async function sendMessage(fromId, toId, fromEmail, content, type="text") {
@@ -1488,7 +1497,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
   const bg = dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":C.bd, txt=dark?"#F2F2F7":C.k;
 
   const load = async () => {
-    const data = await loadMessages(myId, myEmail, friend.id, friend.email);
+    const data = await loadMessages(myId, myEmail, friend.id||"none", friend.email||"");
     setMsgs(data);
     await markMessagesRead(friend.id, myId);
   };
@@ -1803,7 +1812,7 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
         {!loaded&&<Spinner msg="Loading..."/>}
         {loaded&&friends.length===0&&sharedItems.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>No friends yet. Add one above!</div>}
         {friends.map(f=>(
-          <div key={f.id} onClick={()=>setActiveFriend(f)} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+          <div key={f.id} onClick={()=>setActiveFriend({...f, email: f.email||""})} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
             <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0,position:"relative"}}>
               {(f.username||f.email)?.[0]?.toUpperCase()}
               {unread[f.id]>0&&<div style={{position:"absolute",top:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"#ff3b30",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#fff"}}>{unread[f.id]}</div>}
