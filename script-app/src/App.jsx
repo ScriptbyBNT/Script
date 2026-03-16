@@ -1416,18 +1416,23 @@ async function loadMessages(myId, myEmail, otherId, otherEmail) {
 
   const pending = [...(pendingA||[]), ...(pendingB||[])];
 
-  const pendingMsgs = pending.map(p=>({
-    id: "pending_"+p.id,
-    from_id: p.from_email===myEmail ? myId : otherId,
-    to_id:   p.to_email===myEmail   ? myId : otherId,
-    from_email: p.from_email,
-    content: p.data,
-    type: "shared",
-    created_at: p.created_at,
-    read: p.read,
-    pending: true,
-    inbox_id: p.id,
-  }));
+  const pendingMsgs = pending.map(p=>{
+    // If inner type is "text" or "drawing", render as a normal chat bubble not a Scrypt card
+    const innerType = p.data?.type;
+    const isDirectMsg = innerType==="text" || innerType==="drawing";
+    return {
+      id: "pending_"+p.id,
+      from_id: p.from_email===myEmail ? myId : otherId,
+      to_id:   p.to_email===myEmail   ? myId : otherId,
+      from_email: p.from_email,
+      content: isDirectMsg ? p.data?.data : p.data,
+      type: isDirectMsg ? innerType : "shared",
+      created_at: p.created_at,
+      read: p.read,
+      pending: true,
+      inbox_id: p.id,
+    };
+  });
 
   // Skip pending if a real message already covers it (dedup by sender+minute)
   const realKeys = new Set((msgs||[]).filter(m=>m.type==="shared").map(m=>m.from_email+"_"+m.created_at?.slice(0,16)));
@@ -1574,7 +1579,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
             {/* Header bar */}
             <div style={{background:shareColor,padding:"7px 12px",display:"flex",alignItems:"center",gap:7}}>
               <span style={{fontSize:11,fontWeight:800,color:"#fff",letterSpacing:.5,textTransform:"uppercase"}}>
-                Scrypt
+                {isDrawing?"Chalk":isTextNote?"Chalk":isCalDay?"Calendar":isCal?"Calendar":isList?"List":"Scrypt"}
               </span>
               <span style={{fontSize:11,color:"rgba(255,255,255,.7)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sc.title}</span>
               <span style={{fontSize:10,color:"rgba(255,255,255,.5)"}}>{time}</span>
