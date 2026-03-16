@@ -1879,8 +1879,7 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
       <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
         {!loaded&&<Spinner msg="Loading..."/>}
         {loaded&&friends.filter(f=>!blockedUsers.includes(f.email)).length===0&&sharedItems.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>Share something with someone to start a conversation!</div>}
-        {friends.map(f=>(
-          {!blockedUsers.includes(f.email)&&(
+        {friends.filter(f=>!blockedUsers.includes(f.email)).map(f=>(
           <div key={f.id} onClick={()=>setActiveFriend({...f, email: f.email||""})} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
             <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0,position:"relative"}}>
               {(f.username||f.email)?.[0]?.toUpperCase()}
@@ -1891,9 +1890,8 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
               <div style={{fontSize:11,color:sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.email}</div>
             </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="9 18 15 12 9 6"/></svg>
-            <button onClick={e=>{e.stopPropagation();if(window.confirm("Block "+f.email+"? They won't be able to message you.")){blockUser(f.email);}}} style={{background:"none",border:"none",cursor:"pointer",color:"#ff3b30",fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 8px"}}>Block</button>
+            <button onClick={e=>{e.stopPropagation();if(window.confirm("Block "+f.email+"? They cannot message you.")){blockUser(f.email);}}} style={{background:"none",border:"none",cursor:"pointer",color:"#ff3b30",fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 8px"}}>Block</button>
           </div>
-          )}
         ))}
       </div>
     </div>
