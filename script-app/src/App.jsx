@@ -101,19 +101,28 @@ async function dbSave(userId, section, value) {
 }
 
 async function sendShared(fromEmail, toEmail, type, title, data) {
-  const to = toEmail.trim().toLowerCase();
-  const { error } = await sb.from("shared_inbox").insert({
-    from_email: fromEmail.trim().toLowerCase(),
-    to_email: to,
-    type, title, data
-  });
-  if(!error) {
-    // Look up recipient user_id and push notify
-    const { data: prof } = await sb.from("user_profiles").select("id").eq("email", to).single();
-    if(prof?.id) {
-      const typeLabel = type==="note"?"Note":type==="list"?"List":"Calendar";
-      await sendPushToUser(prof.id, "Script — New Share", fromEmail.split("@")[0]+" shared a "+typeLabel+" with you", "share", "shared_items");
-    }
+  const from = fromEmail.trim().toLowerCase();
+  const to   = toEmail.trim().toLowerCase();
+
+  // 1. Bell inbox
+  const { error } = await sb.from("shared_inbox").insert({ from_email: from, to_email: to, type, title, data });
+
+  // 2. Also send as a chat message so it appears in Scrypt Chat conversation
+  // Look up both user IDs from user_profiles
+  const [{ data: fromProf }, { data: toProf }] = await Promise.all([
+    sb.from("user_profiles").select("id").eq("email", from).single(),
+    sb.from("user_profiles").select("id").eq("email", to).single(),
+  ]);
+  if(fromProf?.id && toProf?.id) {
+    await sb.from("messages").insert({
+      from_id: fromProf.id,
+      to_id:   toProf.id,
+      from_email: from,
+      content: { type, title, data },
+      type: "shared",
+    });
+    const typeLabel = type==="note"?"Note":type==="list"?"List":type==="calendar_day"?"Calendar Day":"Calendar";
+    await sendPushToUser(toProf.id, "Script — New Share", from.split("@")[0]+" shared a "+typeLabel+" with you", "share", "shared_items");
   }
   return error;
 }
@@ -322,11 +331,13 @@ function Login({ onLogin }) {
     if(mode==="in"){
       const {data,error}=await sb.auth.signInWithPassword({email:email.trim(),password:pass});
       if(error){ setErr(error.message); setLoading(false); return; }
+      await getOrCreateProfile(data.user.id, data.user.email).catch(()=>{});
       onLogin(data.user);
     } else {
       const {data,error}=await sb.auth.signUp({email:email.trim(),password:pass});
       if(error){ setErr(error.message); setLoading(false); return; }
       if(data.user&&!data.session){ setInfo("Check your email to confirm your account, then sign in."); setLoading(false); return; }
+      if(data.user) await getOrCreateProfile(data.user.id, data.user.email).catch(()=>{});
       onLogin(data.user);
     }
     setLoading(false);
@@ -1437,6 +1448,68 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
     const align = isMe ? "flex-end" : "flex-start";
     const time = new Date(m.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
 
+    // Shared item message
+    if(m.type==="shared") {
+      const sc = m.content||{};
+      const shareType = sc.type||"note";
+      const shareColor = shareType==="note"?"#555":shareType==="list"?"#B85C00":shareType==="calendar_day"||shareType==="calendar"?"#6B3FA0":C.r;
+      const isDrawing = shareType==="note" && typeof sc.data==="object" && sc.data?.paths;
+      const isTextNote = shareType==="note" && typeof sc.data==="string";
+      const isCalDay = shareType==="calendar_day";
+      const isCal = shareType==="calendar";
+      const isList = shareType==="list";
+
+      return(
+        <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:align,marginBottom:12,maxWidth:"82%"}}>
+          <div style={{background:bg2,borderRadius:14,border:"1.5px solid "+shareColor+"55",overflow:"hidden",width:"100%"}}>
+            {/* Header bar */}
+            <div style={{background:shareColor,padding:"7px 12px",display:"flex",alignItems:"center",gap:7}}>
+              <span style={{fontSize:11,fontWeight:800,color:"#fff",letterSpacing:.5,textTransform:"uppercase"}}>
+                {isDrawing?"Drawing":isTextNote?"Note":isCalDay?"Calendar Day":isCal?"Calendar":"List"}
+              </span>
+              <span style={{fontSize:11,color:"rgba(255,255,255,.7)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sc.title}</span>
+              <span style={{fontSize:10,color:"rgba(255,255,255,.5)"}}>{time}</span>
+            </div>
+            {/* Content */}
+            <div style={{padding:"10px 12px"}}>
+              {isDrawing&&<DrawingPreview paths={sc.data.paths} dark={dark}/>}
+              {isTextNote&&<div style={{fontSize:13,color:txt,lineHeight:1.6,whiteSpace:"pre-wrap",maxHeight:160,overflow:"hidden"}}>{sc.data}</div>}
+              {isCalDay&&Object.entries(sc.data||{}).map(([k,v])=>(
+                <div key={k}>
+                  <div style={{fontWeight:700,fontSize:12,color:shareColor,marginBottom:4}}>{k}</div>
+                  <div style={{fontSize:13,color:txt,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{v}</div>
+                </div>
+              ))}
+              {isCal&&(
+                <div style={{fontSize:12,color:C.g}}>{Object.keys(sc.data||{}).length} day(s) with notes</div>
+              )}
+              {isList&&(
+                <div style={{display:"flex",flexDirection:"column",gap:5,maxHeight:140,overflow:"hidden"}}>
+                  {(sc.data||[]).slice(0,5).map((it,i)=>(
+                    <div key={i} style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:14,height:14,borderRadius:4,border:"1.5px solid "+shareColor,background:it.done?shareColor:"transparent",flexShrink:0}}/>
+                      <span style={{fontSize:12,color:txt,textDecoration:it.done?"line-through":"none"}}>{it.text}</span>
+                    </div>
+                  ))}
+                  {(sc.data||[]).length>5&&<div style={{fontSize:11,color:C.g}}>+{sc.data.length-5} more</div>}
+                </div>
+              )}
+            </div>
+            {/* Save buttons — only for recipient */}
+            {!isMe&&(
+              <div style={{padding:"0 12px 10px",display:"flex",gap:7}}>
+                {(isTextNote||isDrawing)&&<button onClick={()=>{ if(isDrawing) onSaveToChalk({paths:sc.data.paths,text:""}); else onSaveToChalk({text:sc.data,paths:[]}); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Chalk</button>}
+                {(isCalDay||isCal)&&<button onClick={async()=>{ const existing=await dbLoad(myId,"chalk"); const cal=await dbLoad(myId,"cal")||{}; Object.entries(sc.data||{}).forEach(([k,v])=>{ cal[k]=cal[k]?cal[k]+"
+---
+"+v:v; }); await dbSave(myId,"cal",cal); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Calendar</button>}
+                {isList&&<button onClick={async()=>{ const existing=await dbLoad(myId,"lists")||[]; const nl={id:"shared_"+Date.now(),label:sc.title||"Shared List",kind:"check",items:sc.data||[]}; await dbSave(myId,"lists",[...existing,nl]); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Lists</button>}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
     return(
       <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:align,marginBottom:10}}>
         {m.type==="drawing" ? (
@@ -1856,13 +1929,20 @@ export default function Script() {
   useEffect(()=>{
     sb.auth.getSession().then(({data})=>{
       if(data?.session?.user) {
-        setUser(data.session.user);
-        // Auto-register SW (needed for push to work)
+        const u = data.session.user;
+        setUser(u);
+        // Create profile immediately on login so they are discoverable
+        getOrCreateProfile(u.id, u.email).catch(()=>{});
         if("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});
       }
       setBooting(false);
     });
-    const {data:listener}=sb.auth.onAuthStateChange((_,session)=>{ setUser(session?.user??null); });
+    const {data:listener}=sb.auth.onAuthStateChange((_,session)=>{
+      const u = session?.user ?? null;
+      setUser(u);
+      // Also create profile on any auth state change (new signup, token refresh)
+      if(u?.id && u?.email) getOrCreateProfile(u.id, u.email).catch(()=>{});
+    });
     return()=>listener.subscription.unsubscribe();
   },[]);
   useEffect(()=>{
