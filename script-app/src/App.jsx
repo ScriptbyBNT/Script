@@ -104,30 +104,23 @@ async function sendShared(fromEmail, toEmail, type, title, data) {
   const from = fromEmail.trim().toLowerCase();
   const to   = toEmail.trim().toLowerCase();
 
-  // 1. Bell inbox (always)
+  // 1. Bell inbox (always — works even if recipient has no account yet)
   const { error } = await sb.from("shared_inbox").insert({ from_email: from, to_email: to, type, title, data });
 
-  // 2. Chat message — look up sender profile (must exist since they are logged in)
+  // 2. Also store as a "shared_chat" entry in shared_inbox so it appears in Scrypt Chat.
+  // We use shared_inbox for both bell AND chat pending items — type="shared_chat" marks it as chat-destined.
+  // When recipient logs in, loadChatShares() pulls these and shows them in the conversation.
+  await sb.from("shared_inbox").insert({
+    from_email: from,
+    to_email: to,
+    type: "shared_chat",
+    title,
+    data: { type, title, data, from_email: from, to_email: to }
+  });
+
+  // 3. If both profiles exist, also insert a real messages row
   const { data: fromProf } = await sb.from("user_profiles").select("id").eq("email", from).single();
-  if(!fromProf?.id) return error; // sender has no profile, bail
-
-  // Recipient profile — may not exist yet if they just signed up
-  let { data: toProf } = await sb.from("user_profiles").select("id").eq("email", to).single();
-
-  // If recipient has no profile yet, create a placeholder so the message can land
-  if(!toProf?.id) {
-    const placeholderId = crypto.randomUUID ? crypto.randomUUID() : (Date.now().toString(36)+Math.random().toString(36).slice(2));
-    await sb.from("user_profiles").upsert({
-      id: placeholderId,
-      email: to,
-      username: to.split("@")[0],
-      updated_at: new Date().toISOString()
-    }, { onConflict: "email" });
-    // Re-fetch after upsert
-    const { data: refetched } = await sb.from("user_profiles").select("id").eq("email", to).single();
-    toProf = refetched;
-  }
-
+  const { data: toProf }   = await sb.from("user_profiles").select("id").eq("email", to).single();
   if(fromProf?.id && toProf?.id) {
     await sb.from("messages").insert({
       from_id: fromProf.id,
@@ -140,6 +133,16 @@ async function sendShared(fromEmail, toEmail, type, title, data) {
     await sendPushToUser(toProf.id, "Script — New Share", from.split("@")[0]+" shared a "+typeLabel+" with you", "share", "shared_items");
   }
   return error;
+}
+
+// Load pending shared_chat items — shown in Scrypt Chat when no real message exists yet
+async function loadChatShares(userEmail) {
+  const { data } = await sb.from("shared_inbox")
+    .select("*")
+    .eq("to_email", userEmail.trim().toLowerCase())
+    .eq("type", "shared_chat")
+    .order("created_at", { ascending: true });
+  return data || [];
 }
 async function loadInbox(userEmail) {
   const { data, error } = await sb.from("shared_inbox")
@@ -1365,12 +1368,40 @@ async function searchUserByEmail(email) {
   return null;
 }
 
-async function loadMessages(myId, otherId) {
-  const { data } = await sb.from("messages")
+async function loadMessages(myId, myEmail, otherId, otherEmail) {
+  // Real messages between both users
+  const { data: msgs } = await sb.from("messages")
     .select("*")
     .or(`and(from_id.eq.${myId},to_id.eq.${otherId}),and(from_id.eq.${otherId},to_id.eq.${myId})`)
     .order("created_at", { ascending: true });
-  return data || [];
+
+  // Pending shared_chat items (shared before both had profiles)
+  const { data: pending } = await sb.from("shared_inbox")
+    .select("*")
+    .eq("type", "shared_chat")
+    .or(`and(from_email.eq.${myEmail},to_email.eq.${otherEmail}),and(from_email.eq.${otherEmail},to_email.eq.${myEmail})`)
+    .order("created_at", { ascending: true });
+
+  // Convert pending to message-like objects and merge, deduplicating by content+time
+  const pendingMsgs = (pending||[]).map(p=>({
+    id: "pending_"+p.id,
+    from_id: p.from_email===myEmail ? myId : otherId,
+    to_id:   p.to_email===myEmail   ? myId : otherId,
+    from_email: p.from_email,
+    content: p.data,
+    type: "shared",
+    created_at: p.created_at,
+    read: p.read,
+    pending: true,
+    inbox_id: p.id,
+  }));
+
+  // Merge: if a real message exists for same share, skip the pending one
+  const realSharedKeys = new Set((msgs||[]).filter(m=>m.type==="shared").map(m=>m.from_email+"_"+m.created_at?.slice(0,16)));
+  const filteredPending = pendingMsgs.filter(p=>!realSharedKeys.has(p.from_email+"_"+p.created_at?.slice(0,16)));
+
+  const all = [...(msgs||[]), ...filteredPending].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at));
+  return all;
 }
 
 async function sendMessage(fromId, toId, fromEmail, content, type="text") {
@@ -1457,7 +1488,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
   const bg = dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":C.bd, txt=dark?"#F2F2F7":C.k;
 
   const load = async () => {
-    const data = await loadMessages(myId, friend.id);
+    const data = await loadMessages(myId, myEmail, friend.id, friend.email);
     setMsgs(data);
     await markMessagesRead(friend.id, myId);
   };
@@ -2101,16 +2132,15 @@ export default function Script() {
       <div style={{flex:1,padding:"14px 16px",overflow:"hidden",display:"flex",flexDirection:"column"}}>
         <App key={active==="chalk"?chalkKey:active} userId={user.id} dark={dark} userEmail={user.email||""} onSaveToChalk={handleSaveToChalk}/>
       </div>
-      <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
-        <div style={{display:"flex",paddingTop:44}}>
+      <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0,paddingBottom:"env(safe-area-inset-bottom,20px)"}}>
+        <div style={{display:"flex"}}>
           {NAV.map(n=>{ const on=active===n.id; return(
-            <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:2,paddingBottom:2,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"background .15s"}}>
+            <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:8,paddingBottom:8,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"background .15s"}}>
               <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
               <span style={{fontSize:9,fontWeight:800,color:on?"#fff":n.color,letterSpacing:.3,textTransform:"uppercase"}}>{n.label}</span>
             </button>
           ); })}
         </div>
-        <div style={{height:72,background:D.headerBg}}/>
       </div>
       {showChat&&(
         <div style={{position:"fixed",inset:0,zIndex:800,background:D.pageBg,display:"flex",flexDirection:"column"}}>
