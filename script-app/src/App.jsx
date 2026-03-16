@@ -1551,9 +1551,9 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
   };
 
   const renderMsg = (m) => {
-    const isMe = m.from_id === myId;
-    const bubbleBg = isMe ? C.r : bg2;
-    const bubbleTxt = isMe ? "#fff" : txt;
+    const isMe = m.from_id === myId || m.from_email === myEmail;
+    const bubbleBg = isMe ? (dark?"#3A3A3C":"#E8E8ED") : bg2;
+    const bubbleTxt = isMe ? (dark?"#F2F2F7":"#1C1C1E") : txt;
     const align = isMe ? "flex-end" : "flex-start";
     const time = new Date(m.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
 
@@ -1608,7 +1608,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
             {!isMe&&(
               <div style={{padding:"0 12px 10px",display:"flex",gap:7}}>
                 {(isTextNote||isDrawing)&&<button onClick={()=>{ if(isDrawing) onSaveToChalk({paths:sc.data.paths,text:""}); else onSaveToChalk({text:sc.data,paths:[]}); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Chalk</button>}
-                {(isCalDay||isCal)&&<button onClick={async()=>{ const existing=await dbLoad(myId,"chalk"); const cal=await dbLoad(myId,"cal")||{}; Object.entries(sc.data||{}).forEach(([k,v])=>{ cal[k]=cal[k]?cal[k]+"\n---\n"+v:v; }); await dbSave(myId,"cal",cal); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Calendar</button>}
+                {(isCalDay||isCal)&&<button onClick={async()=>{ const cal=await dbLoad(myId,"cal")||{}; Object.entries(sc.data||{}).forEach(([k,v])=>{ cal[k]=cal[k]?cal[k]+"\n---\n"+v:v; }); await dbSave(myId,"cal",cal); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Calendar</button>}
                 {isList&&<button onClick={async()=>{ const existing=await dbLoad(myId,"lists")||[]; const nl={id:"shared_"+Date.now(),label:sc.title||"Shared List",kind:"check",items:sc.data||[]}; await dbSave(myId,"lists",[...existing,nl]); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Lists</button>}
               </div>
             )}
@@ -1628,7 +1628,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
             <div style={{fontSize:10,color:isMe?"rgba(255,255,255,.5)":C.g,marginTop:4,textAlign:"right"}}>{time}</div>
           </div>
         ) : (
-          <div style={{maxWidth:"75%",background:bubbleBg,borderRadius:14,padding:"9px 13px",border:isMe?"none":"1.5px solid "+bdr}}>
+          <div style={{maxWidth:"75%",background:bubbleBg,borderRadius:14,padding:"9px 13px",border:"1.5px solid "+(isMe?( dark?"#4A4A4E":"#D1D1D6"):bdr)}}>
             {m.content?.text&&<div style={{fontSize:14,color:bubbleTxt,lineHeight:1.5,wordBreak:"break-word"}}>{m.content.text}</div>}
             <div style={{fontSize:10,color:isMe?"rgba(255,255,255,.5)":C.g,marginTop:3,textAlign:"right"}}>{time}</div>
           </div>
@@ -1738,9 +1738,7 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
   const [profile, setProfile] = useState(null);
   const [friends, setFriends] = useState([]);
   const [activeFriend, setActiveFriend] = useState(null);
-  const [addEmail, setAddEmail] = useState("");
-  const [addState, setAddState] = useState("idle");
-  const [showAdd, setShowAdd] = useState(false);
+  const [blockedUsers, setBlockedUsers] = useState([]);
   const [editName, setEditName] = useState(false);
   const [nameVal, setNameVal] = useState("");
   const [unread, setUnread] = useState({});
@@ -1751,6 +1749,7 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
   useEffect(()=>{
     getOrCreateProfile(userId, userEmail).then(p=>{ setProfile(p); setNameVal(p.username||""); });
     dbLoad(userId,"friends").then(v=>{ if(v) setFriends(v); setLoaded(true); });
+    dbLoad(userId,"blocked").then(v=>{ if(v) setBlockedUsers(v); });
     loadInbox(userEmail).then(async items=>{
       setSharedItems(items||[]);
       // Auto-add anyone who has shared with you as a contact
@@ -1783,24 +1782,17 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
 
   const saveFriends=async(list)=>{ setFriends(list); await dbSave(userId,"friends",list); };
 
-  const addFriend=async()=>{
-    if(!addEmail.trim()) return;
-    setAddState("searching");
-    const found=await searchUserByEmail(addEmail.trim().toLowerCase());
-    if(!found) {
-      // Last resort: allow adding by email even if not found — they may not have logged in yet
-      const entry = { id: "pending_"+addEmail.trim().toLowerCase(), email: addEmail.trim().toLowerCase(), username: addEmail.trim().split("@")[0] };
-      await saveFriends([...friends, entry]);
-      setAddEmail(""); setShowAdd(false); setAddState("idle");
-      return;
-    }
-    if(found.id&&found.id===userId){ setAddState("self"); setTimeout(()=>setAddState("idle"),3000); return; }
-    const alreadyExists=friends.find(f=>f.email===found.email||( found.id&&f.id===found.id));
-    if(alreadyExists){ setAddState("exists"); setTimeout(()=>setAddState("idle"),3000); return; }
-    // stub means profile not in user_profiles yet — store by email, id will resolve later
-    const friendEntry={id:found.id||"pending_"+found.email,email:found.email,username:found.username||found.email.split("@")[0]};
-    await saveFriends([...friends,friendEntry]);
-    setAddEmail(""); setShowAdd(false); setAddState("idle");
+  const blockUser=async(email)=>{
+    const updated=[...blockedUsers.filter(b=>b!==email),email];
+    setBlockedUsers(updated);
+    await dbSave(userId,"blocked",updated);
+    // Also remove from friends
+    await saveFriends(friends.filter(f=>f.email!==email));
+  };
+  const unblockUser=async(email)=>{
+    const updated=blockedUsers.filter(b=>b!==email);
+    setBlockedUsers(updated);
+    await dbSave(userId,"blocked",updated);
   };
 
   const saveName=async()=>{
@@ -1843,25 +1835,6 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
         </div>
       </div>
       {/* Add friend */}
-      <div style={{flexShrink:0}}>
-        {!showAdd ? (
-          <button onClick={()=>setShowAdd(true)} style={{...btn(C.r),width:"100%",borderRadius:12,padding:"11px",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
-            Add Friend
-          </button>
-        ) : (
-          <div style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"12px 14px"}}>
-            <input style={{...inp,marginBottom:10}} value={addEmail} onChange={e=>setAddEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addFriend()} placeholder="Friend's Script email" autoFocus/>
-            {addState==="notfound"&&<div style={{color:"#ff6060",fontSize:12,marginBottom:8}}>No user found with that email.</div>}
-            {addState==="exists"&&<div style={{color:C.g,fontSize:12,marginBottom:8}}>Already in your friends list.</div>}
-            {addState==="self"&&<div style={{color:C.g,fontSize:12,marginBottom:8}}>That is your own email!</div>}
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={addFriend} disabled={addState==="searching"} style={{...btn(C.r),flex:1,fontSize:13,padding:"9px"}}>{addState==="searching"?"Searching...":"Add"}</button>
-              <button onClick={()=>{setShowAdd(false);setAddEmail("");setAddState("idle");}} style={{...btn("#fff",C.k),border:"1.5px solid "+bdr,flex:1,fontSize:13,padding:"9px"}}>Cancel</button>
-            </div>
-          </div>
-        )}
-      </div>
       {/* Shared items section */}
       {sharedItems.length>0&&(
         <div style={{flexShrink:0}}>
@@ -1900,8 +1873,9 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
       {/* Friends list */}
       <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
         {!loaded&&<Spinner msg="Loading..."/>}
-        {loaded&&friends.length===0&&sharedItems.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>No friends yet. Add one above!</div>}
+        {loaded&&friends.filter(f=>!blockedUsers.includes(f.email)).length===0&&sharedItems.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>Share something with someone to start a conversation!</div>}
         {friends.map(f=>(
+          {!blockedUsers.includes(f.email)&&(
           <div key={f.id} onClick={()=>setActiveFriend({...f, email: f.email||""})} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
             <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0,position:"relative"}}>
               {(f.username||f.email)?.[0]?.toUpperCase()}
@@ -1911,9 +1885,10 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
               <div style={{fontWeight:700,fontSize:14,color:txt}}>{f.username||f.email.split("@")[0]}</div>
               <div style={{fontSize:11,color:sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.email}</div>
             </div>
-            <div style={{color:sub,fontSize:18}}>›</div>
-            <button onClick={e=>{e.stopPropagation();saveFriends(friends.filter(x=>x.id!==f.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:16,marginLeft:-8}}>×</button>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="9 18 15 12 9 6"/></svg>
+            <button onClick={e=>{e.stopPropagation();if(window.confirm("Block "+f.email+"? They won't be able to message you.")){blockUser(f.email);}}} style={{background:"none",border:"none",cursor:"pointer",color:"#ff3b30",fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 8px"}}>Block</button>
           </div>
+          )}
         ))}
       </div>
     </div>
