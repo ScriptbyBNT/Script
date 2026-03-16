@@ -1507,7 +1507,7 @@ function ChatDrawCanvas({ onSend, dark }) {
         />
       </div>
       <div style={{display:"flex",gap:8}}>
-        <button onClick={()=>{ if(paths.length>0) onSend({paths},  "drawing"); }} style={{...btn(C.r),flex:1,fontSize:13,padding:"9px"}}>Send Drawing</button>
+        <button onClick={()=>{ if(paths.length>0){ onSend({paths},"drawing"); } }} style={{...btn(C.r),flex:1,fontSize:13,padding:"9px"}}>Send Drawing</button>
         <button onClick={clear} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",padding:"9px 14px",fontSize:13}}>✕</button>
       </div>
     </div>
@@ -1520,39 +1520,62 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [showDraw, setShowDraw] = useState(false);
+  const [hasLoaded, setHasLoaded] = useState(false);
   const bottomRef = useRef(null);
   const pollRef = useRef(null);
+  const msgsRef = useRef([]);
   const bg = dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":C.bd, txt=dark?"#F2F2F7":C.k;
 
-  const load = async () => {
+  const load = async (scrollToBottom=false) => {
     const data = await loadMessages(myId, myEmail, friend.id||"none", friend.email||"");
-    setMsgs(data);
+    // Only update state if messages actually changed — prevents flicker on polls
+    const newJson = JSON.stringify(data.map(m=>m.id));
+    const oldJson = JSON.stringify(msgsRef.current.map(m=>m.id));
+    if(newJson !== oldJson) {
+      msgsRef.current = data;
+      setMsgs(data);
+      if(scrollToBottom) setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),50);
+    }
     if(friend.id && !friend.id.startsWith("pending_")) await markMessagesRead(friend.id, myId);
   };
 
-  useEffect(()=>{ load(); pollRef.current=setInterval(load,5000); return()=>clearInterval(pollRef.current); },[friend.id]);
-  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs]);
+  useEffect(()=>{
+    load(true).then(()=>setHasLoaded(true));
+    pollRef.current = setInterval(()=>load(false), 8000);
+    return()=>clearInterval(pollRef.current);
+  },[friend.id]);
 
   const send = async (content, type="text") => {
-    if(!content&&type==="text") return;
+    if(type==="text" && !content?.trim()) return;
     const payload = type==="text" ? {text:content} : content;
     setSending(true);
+    // Optimistic — add to UI immediately
+    const optimistic = {
+      id: "opt_"+Date.now(),
+      from_id: myId, from_email: myEmail,
+      content: payload, type,
+      created_at: new Date().toISOString(),
+      optimistic: true,
+    };
+    msgsRef.current = [...msgsRef.current, optimistic];
+    setMsgs([...msgsRef.current]);
+    setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),50);
+
     const isPending = !friend.id || friend.id.startsWith("pending_");
     if(isPending) {
-      // Friend has no real profile yet — store in shared_inbox as pending chat
       await sb.from("shared_inbox").insert({
-        from_email: myEmail,
-        to_email: friend.email,
+        from_email: myEmail, to_email: friend.email,
         type: "shared_chat",
-        title: type==="text" ? (content.slice?.(0,40)||"Message") : "Drawing",
-        data: { type, title: type==="text"?(content.slice?.(0,40)||"Message"):"Drawing", data: payload, from_email: myEmail, to_email: friend.email }
+        title: type==="text" ? (content?.slice?.(0,40)||"Message") : "Drawing",
+        data: { type, title: type==="text"?(content?.slice?.(0,40)||"Message"):"Drawing", data: payload, from_email: myEmail, to_email: friend.email }
       });
     } else {
       await sendMessage(myId, friend.id, myEmail, payload, type);
     }
     setInput(""); setShowDraw(false);
-    await load();
     setSending(false);
+    // Refresh to get real server message replacing optimistic
+    await load(false);
   };
 
   const renderMsg = (m) => {
@@ -1686,6 +1709,7 @@ function DrawingPreview({ paths, dark, expandable=true }) {
   const [expanded, setExpanded] = useState(false);
   const bg = dark?"#1C2C1C":"#f0f4ec";
 
+  const pathsKey = (paths||[]).length+"_"+(paths?.[0]?.pts?.length||0);
   const draw = (canvas) => {
     if(!canvas) return;
     const ctx = canvas.getContext("2d");
@@ -1700,7 +1724,7 @@ function DrawingPreview({ paths, dark, expandable=true }) {
     });
   };
 
-  useEffect(()=>{ draw(canvasRef.current); },[paths,dark]);
+  useEffect(()=>{ draw(canvasRef.current); },[pathsKey,dark]);
 
   return(
     <>
