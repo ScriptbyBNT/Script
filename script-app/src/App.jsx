@@ -1728,6 +1728,16 @@ export default function Script() {
     setInbox(prev=>prev.filter(x=>x.id!==item.id));
     setShowInbox(false);
   };
+  const handleSaveToChalk=async(data)=>{
+    const existing=await dbLoad(user.id,"chalk");
+    const newText=(existing?.text||"")+(existing?.text?"
+
+--- Drawing from chat ---":"--- Drawing from chat ---");
+    const newPaths=[...(existing?.paths||[]),...(data.paths||[])];
+    await dbSave(user.id,"chalk",{text:newText,paths:newPaths});
+    setChalkKey(k=>k+1); setActive("chalk");
+  };
+
   const D=dark?{pageBg:"#1C1C1E",headerBg:"#2C2C2E",border:"#3A3A3C",text:"#F2F2F7",sub:"#8E8E93"}:{pageBg:"#F5F0EE",headerBg:"#fff",border:C.bd,text:C.k,sub:C.g};
 
   if(booting) return(
@@ -1782,17 +1792,7 @@ export default function Script() {
         <h1 style={{margin:0,fontSize:22,fontWeight:900,color:cur?.color||D.text,fontFamily:"'Nunito',sans-serif"}}>{cur?.label}</h1>
       </div>
       <div style={{flex:1,padding:"14px 16px",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-        <App key={active==="chalk"?chalkKey:active} userId={user.id} dark={dark} userEmail={user.email||""}
-          {...(active==="messages"?{onSaveToChalk:async(data)=>{
-            const existing=await dbLoad(user.id,"chalk");
-            const newText=(existing?.text||"")+(existing?.text?"
-
---- Drawing from chat ---":"--- Drawing from chat ---");
-            const newPaths=[...(existing?.paths||[]),...(data.paths||[])];
-            await dbSave(user.id,"chalk",{text:newText,paths:newPaths});
-            setChalkKey(k=>k+1); setActive("chalk");
-          }}:{})
-        }/>
+        <App key={active==="chalk"?chalkKey:active} userId={user.id} dark={dark} userEmail={user.email||""} onSaveToChalk={handleSaveToChalk}/>
       </div>
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
         <div style={{display:"flex",paddingTop:22}}>
