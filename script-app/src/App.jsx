@@ -301,7 +301,7 @@ function Login({ onLogin }) {
             <div style={{marginBottom:22}}>
               <button onClick={()=>{setMode("in");setErr("");setInfo("");}} style={{background:"none",border:"none",color:"rgba(255,255,255,.6)",cursor:"pointer",fontSize:13,padding:0}}>← Back to Sign In</button>
               <div style={{color:"#fff",fontWeight:700,fontSize:18,marginTop:12}}>Reset Password</div>
-              <div style={{color:"rgba(255,255,255,.45)",fontSize:13,marginTop:4}}>We'll send a reset link to your email.</div>
+              <div style={{color:"rgba(255,255,255,.45)",fontSize:13,marginTop:4}}>Enter your email to receive a reset link.</div>
             </div>
           )}
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
@@ -1529,7 +1529,7 @@ function Messages({ userId, userEmail, dark, onSaveToChalk }) {
             <input style={{...inp,marginBottom:10}} value={addEmail} onChange={e=>setAddEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addFriend()} placeholder="Friend's Script email" autoFocus/>
             {addState==="notfound"&&<div style={{color:"#ff6060",fontSize:12,marginBottom:8}}>No user found with that email.</div>}
             {addState==="exists"&&<div style={{color:C.g,fontSize:12,marginBottom:8}}>Already in your friends list.</div>}
-            {addState==="self"&&<div style={{color:C.g,fontSize:12,marginBottom:8}}>That's your own email!</div>}
+            {addState==="self"&&<div style={{color:C.g,fontSize:12,marginBottom:8}}>That is your own email!</div>}
             <div style={{display:"flex",gap:8}}>
               <button onClick={addFriend} disabled={addState==="searching"} style={{...btn(C.r),flex:1,fontSize:13,padding:"9px"}}>{addState==="searching"?"Searching...":"Add"}</button>
               <button onClick={()=>{setShowAdd(false);setAddEmail("");setAddState("idle");}} style={{...btn("#fff",C.k),border:"1.5px solid "+bdr,flex:1,fontSize:13,padding:"9px"}}>Cancel</button>
@@ -1730,9 +1730,7 @@ export default function Script() {
   };
   const handleSaveToChalk=async(data)=>{
     const existing=await dbLoad(user.id,"chalk");
-    const newText=(existing?.text||"")+(existing?.text?"
-
---- Drawing from chat ---":"--- Drawing from chat ---");
+    const newText=(existing?.text||"")+(existing?.text?"\n\n--- Drawing from chat ---":"--- Drawing from chat ---");
     const newPaths=[...(existing?.paths||[]),...(data.paths||[])];
     await dbSave(user.id,"chalk",{text:newText,paths:newPaths});
     setChalkKey(k=>k+1); setActive("chalk");
