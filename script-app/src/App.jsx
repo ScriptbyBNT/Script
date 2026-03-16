@@ -101,11 +101,20 @@ async function dbSave(userId, section, value) {
 }
 
 async function sendShared(fromEmail, toEmail, type, title, data) {
+  const to = toEmail.trim().toLowerCase();
   const { error } = await sb.from("shared_inbox").insert({
     from_email: fromEmail.trim().toLowerCase(),
-    to_email: toEmail.trim().toLowerCase(),
+    to_email: to,
     type, title, data
   });
+  if(!error) {
+    // Look up recipient user_id and push notify
+    const { data: prof } = await sb.from("user_profiles").select("id").eq("email", to).single();
+    if(prof?.id) {
+      const typeLabel = type==="note"?"Note":type==="list"?"List":"Calendar";
+      await sendPushToUser(prof.id, "Script — New Share", fromEmail.split("@")[0]+" shared a "+typeLabel+" with you", "share", "shared_items");
+    }
+  }
   return error;
 }
 async function loadInbox(userEmail) {
@@ -117,6 +126,52 @@ async function loadInbox(userEmail) {
 }
 async function deleteInboxItem(id) {
   await sb.from("shared_inbox").delete().eq("id", id);
+}
+
+
+const VAPID_PUBLIC_KEY = "BH-XD8EFCsRSifShwSAZrSXQccdjayfZ8RDZk9Y7aBR39aQIu-FIvZ0BEWfaz2ETC0BOMuwIhwjMU-XyKM__KFA";
+
+async function registerPush(userId) {
+  try {
+    if(!("serviceWorker" in navigator) || !("PushManager" in window)) return null;
+    const reg = await navigator.serviceWorker.register("/sw.js");
+    await navigator.serviceWorker.ready;
+    let sub = await reg.pushManager.getSubscription();
+    if(!sub) {
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY)
+      });
+    }
+    // Save subscription to DB
+    await sb.from("push_subscriptions").upsert(
+      { user_id: userId, subscription: sub.toJSON(), updated_at: new Date().toISOString() },
+      { onConflict: "user_id" }
+    );
+    return sub;
+  } catch(e) { console.error("Push register error:", e); return null; }
+}
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g,"+").replace(/_/g,"/");
+  const raw = window.atob(base64);
+  return Uint8Array.from([...raw].map(c => c.charCodeAt(0)));
+}
+
+async function sendPushToUser(toUserId, title, body, tag="script", type="general") {
+  try {
+    await fetch("/api/send-push", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-script-secret": "script2025" },
+      body: JSON.stringify({ userId: toUserId, title, body, tag, type })
+    });
+  } catch(e) { /* push is best-effort */ }
+}
+
+async function loadNotifSettings(userId) {
+  const v = await dbLoad(userId, "notif_settings");
+  return v || { messages: true, shared_items: true, appointments: true, medications: true };
 }
 
 
@@ -1241,8 +1296,28 @@ async function getOrCreateProfile(userId, email) {
 }
 
 async function searchUserByEmail(email) {
-  const { data } = await sb.from("user_profiles").select("*").eq("email", email.trim().toLowerCase()).single();
-  return data || null;
+  const em = email.trim().toLowerCase();
+  // Try user_profiles first
+  const { data } = await sb.from("user_profiles").select("*").eq("email", em).single();
+  if(data) return data;
+  // Fallback: check if this email appears in shared_inbox (they've used Script before)
+  const { data: inboxRow } = await sb.from("shared_inbox")
+    .select("from_email")
+    .eq("from_email", em)
+    .limit(1)
+    .single();
+  if(inboxRow) {
+    // They exist but haven't opened Chat — return a stub so they can be added
+    return { id: null, email: em, username: em.split("@")[0], stub: true };
+  }
+  // Also check if they appear as sender in messages
+  const { data: msgRow } = await sb.from("messages")
+    .select("from_id, from_email")
+    .eq("from_email", em)
+    .limit(1)
+    .single();
+  if(msgRow) return { id: msgRow.from_id, email: em, username: em.split("@")[0] };
+  return null;
 }
 
 async function loadMessages(myId, otherId) {
@@ -1255,6 +1330,10 @@ async function loadMessages(myId, otherId) {
 
 async function sendMessage(fromId, toId, fromEmail, content, type="text") {
   const { error } = await sb.from("messages").insert({ from_id: fromId, to_id: toId, from_email: fromEmail, content, type });
+  if(!error) {
+    const preview = type==="drawing" ? "sent you a drawing" : (content?.text||"").slice(0,60)||"sent a message";
+    await sendPushToUser(toId, "Scrypt Chat", fromEmail.split("@")[0]+": "+preview, "message", "messages");
+  }
   return error;
 }
 
@@ -1437,7 +1516,7 @@ function DrawingPreview({ paths, dark }) {
 }
 
 // ── Friends list + messaging hub ──
-function Messages({ userId, userEmail, dark, onSaveToChalk }) {
+function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
   const [profile, setProfile] = useState(null);
   const [friends, setFriends] = useState([]);
   const [activeFriend, setActiveFriend] = useState(null);
@@ -1447,13 +1526,15 @@ function Messages({ userId, userEmail, dark, onSaveToChalk }) {
   const [editName, setEditName] = useState(false);
   const [nameVal, setNameVal] = useState("");
   const [unread, setUnread] = useState({});
+  const [sharedItems, setSharedItems] = useState([]);
   const [loaded, setLoaded] = useState(false);
   const bg=dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":C.bd, txt=dark?"#F2F2F7":C.k, sub=dark?"#8E8E93":C.g;
 
   useEffect(()=>{
     getOrCreateProfile(userId, userEmail).then(p=>{ setProfile(p); setNameVal(p.username||""); });
     dbLoad(userId,"friends").then(v=>{ if(v) setFriends(v); setLoaded(true); });
-  },[userId]);
+    loadInbox(userEmail).then(items=>setSharedItems(items||[]));
+  },[userId, userEmail]);
 
   // Poll unread counts
   useEffect(()=>{
@@ -1478,9 +1559,12 @@ function Messages({ userId, userEmail, dark, onSaveToChalk }) {
     setAddState("searching");
     const found=await searchUserByEmail(addEmail.trim().toLowerCase());
     if(!found){ setAddState("notfound"); setTimeout(()=>setAddState("idle"),3000); return; }
-    if(found.id===userId){ setAddState("self"); setTimeout(()=>setAddState("idle"),3000); return; }
-    if(friends.find(f=>f.id===found.id)){ setAddState("exists"); setTimeout(()=>setAddState("idle"),3000); return; }
-    await saveFriends([...friends,{id:found.id,email:found.email,username:found.username||found.email.split("@")[0]}]);
+    if(found.id&&found.id===userId){ setAddState("self"); setTimeout(()=>setAddState("idle"),3000); return; }
+    const alreadyExists=friends.find(f=>f.email===found.email||( found.id&&f.id===found.id));
+    if(alreadyExists){ setAddState("exists"); setTimeout(()=>setAddState("idle"),3000); return; }
+    // stub means profile not in user_profiles yet — store by email, id will resolve later
+    const friendEntry={id:found.id||"pending_"+found.email,email:found.email,username:found.username||found.email.split("@")[0]};
+    await saveFriends([...friends,friendEntry]);
     setAddEmail(""); setShowAdd(false); setAddState("idle");
   };
 
@@ -1543,10 +1627,45 @@ function Messages({ userId, userEmail, dark, onSaveToChalk }) {
           </div>
         )}
       </div>
+      {/* Shared items section */}
+      {sharedItems.length>0&&(
+        <div style={{flexShrink:0}}>
+          <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Shared with you</div>
+          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+            {sharedItems.map(item=>(
+              <div key={item.id} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"12px 14px"}}>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                  <div style={{width:32,height:32,borderRadius:10,background:item.type==="note"?"#555":item.type==="list"?"#B85C00":item.type==="calendar"||item.type==="calendar_day"?"#6B3FA0":C.r,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {item.type==="note"&&<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>}
+                    {item.type==="list"&&<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>}
+                    {(item.type==="calendar"||item.type==="calendar_day")&&<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{item.title}</div>
+                    <div style={{fontSize:11,color:sub}}>from {item.from_email.split("@")[0]} · {item.type==="note"?"Note":item.type==="list"?"List":"Calendar"}</div>
+                  </div>
+                </div>
+                {item.type==="note"&&typeof item.data==="string"&&(
+                  <div style={{fontSize:12,color:sub,marginBottom:8,padding:"6px 8px",background:bg,borderRadius:8,maxHeight:60,overflow:"hidden"}}>{item.data.slice(0,120)}{item.data.length>120?"...":""}</div>
+                )}
+                {item.type==="note"&&typeof item.data==="object"&&item.data?.paths&&(
+                  <div style={{marginBottom:8}}><DrawingPreview paths={item.data.paths} dark={dark}/></div>
+                )}
+                <div style={{display:"flex",gap:7}}>
+                  <button onClick={async()=>{ await onAcceptShared(item); setSharedItems(prev=>prev.filter(x=>x.id!==item.id)); }} style={{...btn(C.r),flex:1,fontSize:12,padding:"7px",borderRadius:8}}>
+                    {item.type==="list"?"Add to Lists":item.type==="note"?"Add to Chalk":"Add to Calendar"}
+                  </button>
+                  <button onClick={async()=>{ await deleteInboxItem(item.id); setSharedItems(prev=>prev.filter(x=>x.id!==item.id)); }} style={{...btn("#fff",C.k),border:"1.5px solid "+bdr,fontSize:12,padding:"7px 12px",borderRadius:8}}>Dismiss</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {/* Friends list */}
       <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
         {!loaded&&<Spinner msg="Loading..."/>}
-        {loaded&&friends.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>No friends yet. Add one above!</div>}
+        {loaded&&friends.length===0&&sharedItems.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>No friends yet. Add one above!</div>}
         {friends.map(f=>(
           <div key={f.id} onClick={()=>setActiveFriend(f)} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
             <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0,position:"relative"}}>
@@ -1568,6 +1687,41 @@ function Messages({ userId, userEmail, dark, onSaveToChalk }) {
 // ── SETTINGS ──
 function Settings({ user, dark, setDark, onClose }) {
   const [tab,setTab]=useState("account");
+  const [notifSettings,setNotifSettings]=useState({messages:true,shared_items:true,appointments:true,medications:true});
+  const [pushEnabled,setPushEnabled]=useState(false);
+  const [pushLoading,setPushLoading]=useState(false);
+
+  useEffect(()=>{
+    loadNotifSettings(user.id).then(s=>{ if(s) setNotifSettings(s); });
+    if("serviceWorker" in navigator){
+      navigator.serviceWorker.getRegistration("/sw.js").then(reg=>{
+        reg?.pushManager?.getSubscription?.().then(sub=>setPushEnabled(!!sub));
+      }).catch(()=>{});
+    }
+  },[user.id]);
+
+  const saveNotifSetting=async(key,val)=>{
+    const updated={...notifSettings,[key]:val};
+    setNotifSettings(updated);
+    await dbSave(user.id,"notif_settings",updated);
+  };
+
+  const togglePush=async()=>{
+    setPushLoading(true);
+    if(pushEnabled){
+      try{
+        const reg=await navigator.serviceWorker.getRegistration("/sw.js");
+        const sub=await reg?.pushManager?.getSubscription?.();
+        await sub?.unsubscribe?.();
+        await sb.from("push_subscriptions").delete().eq("user_id",user.id);
+        setPushEnabled(false);
+      }catch(e){}
+    } else {
+      const sub=await registerPush(user.id);
+      setPushEnabled(!!sub);
+    }
+    setPushLoading(false);
+  };
   const [newEmail,setNewEmail]=useState("");
   const [newPass,setNewPass]=useState("");
   const [confPass,setConfPass]=useState("");
@@ -1591,7 +1745,7 @@ function Settings({ user, dark, setDark, onClose }) {
           <button onClick={onClose} style={{background:bg2,border:"none",borderRadius:10,width:32,height:32,cursor:"pointer",fontSize:18,color:txt,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
         </div>
         <div style={{display:"flex",gap:6,padding:"0 20px",marginBottom:20}}>
-          {[["account","Account"],["appearance","Appearance"]].map(([id,l])=>(
+          {[["account","Account"],["appearance","Appearance"],["notifications","Notifications"]].map(([id,l])=>(
             <button key={id} onClick={()=>{setTab(id);setErr("");setMsg("");}} style={{...pill(tab===id),fontSize:13}}>{l}</button>
           ))}
         </div>
@@ -1638,6 +1792,32 @@ function Settings({ user, dark, setDark, onClose }) {
               </div>
             </>
           )}
+          {tab==="notifications"&&<>
+            <div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
+              <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Push Notifications</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:txt}}>Enable on this device</div>
+                  <div style={{fontSize:12,color:sub,marginTop:2}}>Alerts on lock screen when app is closed</div>
+                </div>
+                <button onClick={togglePush} disabled={pushLoading} style={{width:50,height:28,borderRadius:14,background:pushEnabled?C.r:"#E5E5EA",border:"none",cursor:"pointer",position:"relative",transition:"background .2s",opacity:pushLoading?0.6:1}}>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:pushEnabled?25:3,transition:"left .2s"}}/>
+                </button>
+              </div>
+              {!pushEnabled&&<div style={{fontSize:11,color:sub,background:bg,borderRadius:8,padding:"8px 10px"}}>Tap enable, then tap Allow when prompted.</div>}
+            </div>
+            {pushEnabled&&<div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
+              <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Alert me for</div>
+              {[["messages","New messages in Scrypt Chat"],["shared_items","Items shared with me"],["appointments","Upcoming appointments"],["medications","Medication reminders"]].map(([key,label])=>(
+                <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{fontSize:14,color:txt,fontWeight:500}}>{label}</div>
+                  <button onClick={()=>saveNotifSetting(key,!notifSettings[key])} style={{width:50,height:28,borderRadius:14,background:notifSettings[key]?C.r:"#E5E5EA",border:"none",cursor:"pointer",position:"relative",transition:"background .2s"}}>
+                    <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:notifSettings[key]?25:3,transition:"left .2s"}}/>
+                  </button>
+                </div>
+              ))}
+            </div>}
+          </>}
           {err&&<div style={{color:"#ff6060",fontSize:13,background:"rgba(255,80,80,.08)",borderRadius:10,padding:"10px 14px"}}>{err}</div>}
           {msg&&<div style={{color:"#34c759",fontSize:13,background:"rgba(52,199,89,.08)",borderRadius:10,padding:"10px 14px"}}>{msg}</div>}
         </div>
@@ -1674,7 +1854,14 @@ export default function Script() {
 
   useEffect(()=>{ try{ localStorage.setItem("script_dark",dark?"1":"0"); }catch(e){} },[dark]);
   useEffect(()=>{
-    sb.auth.getSession().then(({data})=>{ if(data?.session?.user) setUser(data.session.user); setBooting(false); });
+    sb.auth.getSession().then(({data})=>{
+      if(data?.session?.user) {
+        setUser(data.session.user);
+        // Auto-register SW (needed for push to work)
+        if("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(()=>{});
+      }
+      setBooting(false);
+    });
     const {data:listener}=sb.auth.onAuthStateChange((_,session)=>{ setUser(session?.user??null); });
     return()=>listener.subscription.unsubscribe();
   },[]);
@@ -1820,7 +2007,7 @@ export default function Script() {
             <span style={{fontFamily:"'Nunito',sans-serif",fontSize:18,fontWeight:900,color:C.r}}>Scrypt Chat</span>
           </div>
           <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",padding:"14px 16px"}}>
-            <Messages userId={user.id} userEmail={user.email||""} dark={dark} onSaveToChalk={handleSaveToChalk}/>
+            <Messages userId={user.id} userEmail={user.email||""} dark={dark} onSaveToChalk={handleSaveToChalk} onAcceptShared={async(item)=>{ await acceptShared(item); }}/>
           </div>
         </div>
       )}
