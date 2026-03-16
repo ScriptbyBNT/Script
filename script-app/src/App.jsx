@@ -100,12 +100,35 @@ async function dbSave(userId, section, value) {
   if(error) console.error("dbSave error:", section, error);
 }
 
+
+async function autoAddContact(myUserId, myEmail, theirEmail) {
+  // Load existing friends list
+  const friends = await dbLoad(myUserId, "friends") || [];
+  const already = friends.find(f => f.email === theirEmail.toLowerCase());
+  if(already) return; // already a contact
+
+  // Look up their profile
+  const { data: prof } = await sb.from("user_profiles").select("id,email,username").eq("email", theirEmail.toLowerCase()).single();
+  const entry = {
+    id: prof?.id || "pending_"+theirEmail,
+    email: theirEmail.toLowerCase(),
+    username: prof?.username || theirEmail.split("@")[0]
+  };
+  await dbSave(myUserId, "friends", [...friends, entry]);
+}
+
 async function sendShared(fromEmail, toEmail, type, title, data) {
   const from = fromEmail.trim().toLowerCase();
   const to   = toEmail.trim().toLowerCase();
 
   // 1. Bell inbox (always — works even if recipient has no account yet)
   const { error } = await sb.from("shared_inbox").insert({ from_email: from, to_email: to, type, title, data });
+
+  // 1b. Auto-add each other as contacts so chat appears without needing to "Add Friend"
+  const { data: fromProfForContact } = await sb.from("user_profiles").select("id").eq("email", from).single();
+  if(fromProfForContact?.id) {
+    await autoAddContact(fromProfForContact.id, from, to);
+  }
 
   // 2. Also store as a "shared_chat" entry in shared_inbox so it appears in Scrypt Chat.
   // We use shared_inbox for both bell AND chat pending items — type="shared_chat" marks it as chat-destined.
@@ -1678,7 +1701,18 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
   useEffect(()=>{
     getOrCreateProfile(userId, userEmail).then(p=>{ setProfile(p); setNameVal(p.username||""); });
     dbLoad(userId,"friends").then(v=>{ if(v) setFriends(v); setLoaded(true); });
-    loadInbox(userEmail).then(items=>setSharedItems(items||[]));
+    loadInbox(userEmail).then(async items=>{
+      setSharedItems(items||[]);
+      // Auto-add anyone who has shared with you as a contact
+      for(const item of (items||[])) {
+        if(item.from_email && item.from_email !== userEmail) {
+          await autoAddContact(userId, userEmail, item.from_email).catch(()=>{});
+        }
+      }
+      // Reload friends after auto-add
+      const updated = await dbLoad(userId,"friends");
+      if(updated) setFriends(updated);
+    });
   },[userId, userEmail]);
 
   // Poll unread counts
@@ -1703,7 +1737,13 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
     if(!addEmail.trim()) return;
     setAddState("searching");
     const found=await searchUserByEmail(addEmail.trim().toLowerCase());
-    if(!found){ setAddState("notfound"); setTimeout(()=>setAddState("idle"),3000); return; }
+    if(!found) {
+      // Last resort: allow adding by email even if not found — they may not have logged in yet
+      const entry = { id: "pending_"+addEmail.trim().toLowerCase(), email: addEmail.trim().toLowerCase(), username: addEmail.trim().split("@")[0] };
+      await saveFriends([...friends, entry]);
+      setAddEmail(""); setShowAdd(false); setAddState("idle");
+      return;
+    }
     if(found.id&&found.id===userId){ setAddState("self"); setTimeout(()=>setAddState("idle"),3000); return; }
     const alreadyExists=friends.find(f=>f.email===found.email||( found.id&&f.id===found.id));
     if(alreadyExists){ setAddState("exists"); setTimeout(()=>setAddState("idle"),3000); return; }
