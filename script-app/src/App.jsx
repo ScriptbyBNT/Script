@@ -471,6 +471,12 @@ function Chalk({ userId, dark, userEmail }) {
         )}
         {showShare&&<ShareModal title={mode==="draw"?"My Drawing":"My Notes"} userId={userId} onClose={()=>setShowShare(false)} onSend={async(toEmail)=>sendShared(userEmail,toEmail,"note",mode==="draw"?"Chalk Drawing":"Chalk Notes",mode==="draw"?{text,paths}:text)}/>}
         <button onClick={()=>setShowShare(true)} style={{position:"absolute",bottom:16,left:16,background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:24,padding:"10px 16px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",backdropFilter:"blur(4px)"}}>⬆ Share</button>
+        {mode==="type"&&(
+          <button onClick={listening?stopListening:startListening} style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",background:listening?"rgba(200,34,10,.85)":"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:24,padding:"10px 16px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill={listening?"#fff":"none"} stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+            {listening?"Listening...":"Speak"}
+          </button>
+        )}
         <div style={{position:"absolute",bottom:16,right:16,display:"flex",gap:10,alignItems:"center"}}>
           {mode==="draw"&&(
             <button onClick={eraseLast} style={{width:48,height:48,borderRadius:"50%",background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -1647,7 +1653,6 @@ const NAV=[
   {id:"calendar", label:"Calendar", color:"#6B3FA0", App:Calendar},
   {id:"money",    label:"Money",    color:"#1B6B35", App:Money},
   {id:"health",   label:"Health",   color:"#B5174A", App:Health},
-  {id:"messages", label:"Chat",     color:"#0077CC", App:Messages},
 ];
 
 export default function Script() {
@@ -1661,6 +1666,7 @@ export default function Script() {
   const [booting,setBooting]=useState(true);
   const [inbox,setInbox]=useState([]);
   const [showInbox,setShowInbox]=useState(false);
+  const [showChat,setShowChat]=useState(false);
 
   const hash=window.location.hash;
   const hashShare=hash.match(/^#share\/(.+)$/);
@@ -1763,6 +1769,10 @@ export default function Script() {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <span style={{fontSize:12,color:D.sub,fontWeight:600}}>{new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
+          <button onClick={()=>setShowChat(true)} style={{display:"flex",alignItems:"center",gap:5,background:C.r,border:"none",borderRadius:20,padding:"5px 11px",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:800,letterSpacing:.3}}>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Scrypt Chat
+          </button>
           <button onClick={()=>setShowInbox(true)} style={{position:"relative",background:"none",border:"none",cursor:"pointer",padding:4}}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={D.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             {inbox.filter(i=>!i.read).length>0&&<div style={{position:"absolute",top:2,right:2,width:8,height:8,borderRadius:"50%",background:C.r}}/>}
@@ -1793,7 +1803,7 @@ export default function Script() {
         <App key={active==="chalk"?chalkKey:active} userId={user.id} dark={dark} userEmail={user.email||""} onSaveToChalk={handleSaveToChalk}/>
       </div>
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
-        <div style={{display:"flex",paddingTop:22}}>
+        <div style={{display:"flex",paddingTop:32}}>
           {NAV.map(n=>{ const on=active===n.id; return(
             <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:2,paddingBottom:2,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"background .15s"}}>
               <div style={{width:6,height:6,borderRadius:"50%",background:on?"#fff":n.color,opacity:on?1:.5}}/>
@@ -1801,8 +1811,19 @@ export default function Script() {
             </button>
           ); })}
         </div>
-        <div style={{height:56,background:D.headerBg}}/>
+        <div style={{height:64,background:D.headerBg}}/>
       </div>
+      {showChat&&(
+        <div style={{position:"fixed",inset:0,zIndex:800,background:D.pageBg,display:"flex",flexDirection:"column"}}>
+          <div style={{background:D.headerBg,borderBottom:"1.5px solid "+D.border,padding:"10px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+            <button onClick={()=>setShowChat(false)} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:22,fontWeight:900,lineHeight:1,padding:0}}>‹</button>
+            <span style={{fontFamily:"'Nunito',sans-serif",fontSize:18,fontWeight:900,color:C.r}}>Scrypt Chat</span>
+          </div>
+          <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",padding:"14px 16px"}}>
+            <Messages userId={user.id} userEmail={user.email||""} dark={dark} onSaveToChalk={handleSaveToChalk}/>
+          </div>
+        </div>
+      )}
       {showInbox&&<InboxModal items={inbox} onAccept={acceptShared} onDismiss={async(id)=>{ await deleteInboxItem(id); setInbox(prev=>prev.filter(x=>x.id!==id)); }} onClose={()=>setShowInbox(false)}/>}
       {showSett&&<Settings user={user} dark={dark} setDark={setDark} onClose={()=>setShowSett(false)}/>}
     </div>
