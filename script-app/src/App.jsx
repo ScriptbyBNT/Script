@@ -1574,7 +1574,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
             {/* Header bar */}
             <div style={{background:shareColor,padding:"7px 12px",display:"flex",alignItems:"center",gap:7}}>
               <span style={{fontSize:11,fontWeight:800,color:"#fff",letterSpacing:.5,textTransform:"uppercase"}}>
-                {isDrawing?"Drawing":isTextNote?"Note":isCalDay?"Calendar Day":isCal?"Calendar":"List"}
+                Scrypt
               </span>
               <span style={{fontSize:11,color:"rgba(255,255,255,.7)",flex:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{sc.title}</span>
               <span style={{fontSize:10,color:"rgba(255,255,255,.5)"}}>{time}</span>
