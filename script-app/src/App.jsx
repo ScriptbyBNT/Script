@@ -1557,8 +1557,8 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
 
   const renderMsg = (m) => {
     const isMe = m.from_id === myId || m.from_email === myEmail;
-    const bubbleBg = isMe ? (dark?"#3A3A3C":"#E8E8ED") : bg2;
-    const bubbleTxt = isMe ? (dark?"#F2F2F7":"#1C1C1E") : txt;
+    const bubbleBg = isMe ? C.r : bg2;
+    const bubbleTxt = isMe ? "#fff" : txt;
     const align = isMe ? "flex-end" : "flex-start";
     const time = new Date(m.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
 
@@ -1625,7 +1625,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
     return(
       <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:align,marginBottom:10}}>
         {m.type==="drawing" ? (
-          <div style={{maxWidth:"75%",background:bubbleBg,borderRadius:14,padding:10,border:"1.5px solid "+bdr}}>
+          <div style={{maxWidth:"75%",background:bubbleBg,borderRadius:14,padding:10,border:isMe?"none":"1.5px solid "+bdr}}>
             <DrawingPreview paths={m.content?.paths||[]} dark={dark}/>
             <div style={{display:"flex",gap:8,marginTop:8,justifyContent:"flex-end"}}>
               {!isMe&&<button onClick={()=>onSaveToChalk({paths:m.content?.paths||[],text:""})} style={{...btn(C.r),fontSize:11,padding:"5px 10px",borderRadius:8}}>+ Save to Chalk</button>}
@@ -1633,7 +1633,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
             <div style={{fontSize:10,color:isMe?"rgba(255,255,255,.5)":C.g,marginTop:4,textAlign:"right"}}>{time}</div>
           </div>
         ) : (
-          <div style={{maxWidth:"75%",background:bubbleBg,borderRadius:14,padding:"9px 13px",border:"1.5px solid "+(isMe?( dark?"#4A4A4E":"#D1D1D6"):bdr)}}>
+          <div style={{maxWidth:"75%",background:bubbleBg,borderRadius:isMe?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 14px",border:isMe?"none":"1.5px solid "+bdr}}>
             {m.content?.text&&<div style={{fontSize:14,color:bubbleTxt,lineHeight:1.5,wordBreak:"break-word"}}>{m.content.text}</div>}
             <div style={{fontSize:10,color:isMe?"rgba(255,255,255,.5)":C.g,marginTop:3,textAlign:"right"}}>{time}</div>
           </div>
