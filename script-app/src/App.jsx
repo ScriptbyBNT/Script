@@ -1522,7 +1522,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
   const load = async () => {
     const data = await loadMessages(myId, myEmail, friend.id||"none", friend.email||"");
     setMsgs(data);
-    await markMessagesRead(friend.id, myId);
+    if(friend.id && !friend.id.startsWith("pending_")) await markMessagesRead(friend.id, myId);
   };
 
   useEffect(()=>{ load(); pollRef.current=setInterval(load,5000); return()=>clearInterval(pollRef.current); },[friend.id]);
@@ -1532,7 +1532,19 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
     if(!content&&type==="text") return;
     const payload = type==="text" ? {text:content} : content;
     setSending(true);
-    await sendMessage(myId, friend.id, myEmail, payload, type);
+    const isPending = !friend.id || friend.id.startsWith("pending_");
+    if(isPending) {
+      // Friend has no real profile yet — store in shared_inbox as pending chat
+      await sb.from("shared_inbox").insert({
+        from_email: myEmail,
+        to_email: friend.email,
+        type: "shared_chat",
+        title: type==="text" ? (content.slice?.(0,40)||"Message") : "Drawing",
+        data: { type, title: type==="text"?(content.slice?.(0,40)||"Message"):"Drawing", data: payload, from_email: myEmail, to_email: friend.email }
+      });
+    } else {
+      await sendMessage(myId, friend.id, myEmail, payload, type);
+    }
     setInput(""); setShowDraw(false);
     await load();
     setSending(false);
@@ -1654,7 +1666,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
         <textarea value={input} onChange={e=>setInput(e.target.value)}
           onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(input.trim()); } }}
           placeholder="Message..." rows={1}
-          style={{flex:1,padding:"10px 13px",borderRadius:12,border:"1.5px solid "+bdr,fontSize:14,outline:"none",resize:"none",background:dark?"#3A3A3C":"#F5F0EE",color:txt,fontFamily:"'Nunito',sans-serif",lineHeight:1.4,maxHeight:100,overflowY:"auto"}}
+          style={{flex:1,padding:"10px 13px",borderRadius:12,border:"1.5px solid "+bdr,fontSize:16,outline:"none",resize:"none",background:dark?"#3A3A3C":"#F5F0EE",color:txt,fontFamily:"'Nunito',sans-serif",lineHeight:1.4,maxHeight:100,overflowY:"auto"}}
         ></textarea>
         <button onClick={()=>send(input.trim())} disabled={!input.trim()||sending} style={{width:40,height:40,borderRadius:12,background:input.trim()?C.r:"#ddd",border:"none",cursor:input.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
@@ -1664,12 +1676,14 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
   );
 }
 
-function DrawingPreview({ paths, dark }) {
+function DrawingPreview({ paths, dark, expandable=true }) {
   const canvasRef = useRef(null);
+  const [expanded, setExpanded] = useState(false);
   const bg = dark?"#1C2C1C":"#f0f4ec";
-  useEffect(()=>{
-    const canvas=canvasRef.current; if(!canvas) return;
-    const ctx=canvas.getContext("2d");
+
+  const draw = (canvas) => {
+    if(!canvas) return;
+    const ctx = canvas.getContext("2d");
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.fillStyle=bg; ctx.fillRect(0,0,canvas.width,canvas.height);
     ctx.lineCap="round"; ctx.lineJoin="round";
@@ -1679,8 +1693,44 @@ function DrawingPreview({ paths, dark }) {
       ctx.beginPath(); ctx.moveTo(path.pts[0].x,path.pts[0].y);
       path.pts.slice(1).forEach(pt=>ctx.lineTo(pt.x,pt.y)); ctx.stroke();
     });
+  };
+
+  useEffect(()=>{ draw(canvasRef.current); },[paths,dark]);
+
+  return(
+    <>
+      <div style={{position:"relative",cursor:expandable?"pointer":"default"}} onClick={()=>expandable&&setExpanded(true)}>
+        <canvas ref={canvasRef} width={800} height={600}
+          style={{width:"100%",height:"auto",maxHeight:220,borderRadius:8,display:"block",objectFit:"contain"}}
+        />
+        {expandable&&<div style={{position:"absolute",bottom:6,right:6,background:"rgba(0,0,0,.45)",borderRadius:6,padding:"3px 8px",fontSize:10,color:"#fff",fontWeight:700}}>tap to expand</div>}
+      </div>
+      {expanded&&(
+        <div onClick={()=>setExpanded(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.92)",zIndex:1200,display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",padding:20}}>
+          <ExpandedDrawing paths={paths} dark={dark} bg={bg}/>
+          <button onClick={()=>setExpanded(false)} style={{marginTop:16,background:"rgba(255,255,255,.1)",border:"1px solid rgba(255,255,255,.2)",borderRadius:10,padding:"10px 24px",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700}}>Close</button>
+        </div>
+      )}
+    </>
+  );
+}
+
+function ExpandedDrawing({ paths, dark, bg }) {
+  const canvasRef = useRef(null);
+  useEffect(()=>{
+    const canvas=canvasRef.current; if(!canvas) return;
+    const ctx=canvas.getContext("2d");
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle=bg||"#f0f4ec"; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.lineCap="round"; ctx.lineJoin="round";
+    (paths||[]).forEach(path=>{
+      if(!path.pts||path.pts.length<2) return;
+      ctx.strokeStyle=path.color||"#000"; ctx.lineWidth=path.size||2;
+      ctx.beginPath(); ctx.moveTo(path.pts[0].x,path.pts[0].y);
+      path.pts.slice(1).forEach(pt=>ctx.lineTo(pt.x,pt.y)); ctx.stroke();
+    });
   },[paths,dark]);
-  return <canvas ref={canvasRef} width={800} height={400} style={{width:"100%",height:100,borderRadius:8,display:"block"}}/>;
+  return <canvas ref={canvasRef} width={800} height={600} style={{maxWidth:"100%",maxHeight:"75vh",borderRadius:12,display:"block",objectFit:"contain"}}/>;
 }
 
 // ── Friends list + messaging hub ──
@@ -2140,6 +2190,7 @@ export default function Script() {
 
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100svh",background:D.pageBg,fontFamily:"'Nunito',sans-serif",overflow:"hidden",paddingTop:"env(safe-area-inset-top)"}}>
+      <style>{`input,select,textarea{font-size:16px!important;}`}</style>
       {dark&&<style>{`input,select,textarea{background:#2C2C2E !important;color:#F2F2F7 !important;border-color:#3A3A3C !important;}input::placeholder,textarea::placeholder{color:#636366 !important;}`}</style>}
       <div style={{background:D.headerBg,borderBottom:"1.5px solid "+D.border,padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
         <div style={{display:"flex",alignItems:"center",gap:9}}>
