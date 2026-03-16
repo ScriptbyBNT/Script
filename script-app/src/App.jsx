@@ -1499,9 +1499,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
             {!isMe&&(
               <div style={{padding:"0 12px 10px",display:"flex",gap:7}}>
                 {(isTextNote||isDrawing)&&<button onClick={()=>{ if(isDrawing) onSaveToChalk({paths:sc.data.paths,text:""}); else onSaveToChalk({text:sc.data,paths:[]}); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Chalk</button>}
-                {(isCalDay||isCal)&&<button onClick={async()=>{ const existing=await dbLoad(myId,"chalk"); const cal=await dbLoad(myId,"cal")||{}; Object.entries(sc.data||{}).forEach(([k,v])=>{ cal[k]=cal[k]?cal[k]+"
----
-"+v:v; }); await dbSave(myId,"cal",cal); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Calendar</button>}
+                {(isCalDay||isCal)&&<button onClick={async()=>{ const existing=await dbLoad(myId,"chalk"); const cal=await dbLoad(myId,"cal")||{}; Object.entries(sc.data||{}).forEach(([k,v])=>{ cal[k]=cal[k]?cal[k]+"\n---\n"+v:v; }); await dbSave(myId,"cal",cal); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Calendar</button>}
                 {isList&&<button onClick={async()=>{ const existing=await dbLoad(myId,"lists")||[]; const nl={id:"shared_"+Date.now(),label:sc.title||"Shared List",kind:"check",items:sc.data||[]}; await dbSave(myId,"lists",[...existing,nl]); }} style={{...btn(shareColor),flex:1,fontSize:11,padding:"6px",borderRadius:8}}>+ Add to Lists</button>}
               </div>
             )}
