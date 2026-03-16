@@ -362,6 +362,8 @@ function Chalk({ userId, dark, userEmail }) {
   const [loaded,setLoaded]=useState(false);
   const [mode,setMode]=useState("type");
   const [showShare,setShowShare]=useState(false);
+  const [listening,setListening]=useState(false);
+  const recognitionRef=useRef(null);
   const [drawing,setDrawing]=useState(false);
   const [paths,setPaths]=useState([]);
   const [color,setColor]=useState("#ffffff");
@@ -380,6 +382,15 @@ function Chalk({ userId, dark, userEmail }) {
 
   const save=(t,p)=>{ clearTimeout(timer.current); timer.current=setTimeout(async()=>{ await dbSave(userId,"chalk",{text:t,paths:p}); },1200); };
   const onTextChange=val=>{ setText(val); save(val,paths); };
+  const startListening=()=>{
+    const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+    if(!SR){ alert("Speech not supported in this browser."); return; }
+    const r=new SR(); r.continuous=true; r.interimResults=false; r.lang="en-US";
+    r.onresult=e=>{ const t=Array.from(e.results).slice(e.resultIndex).map(x=>x[0].transcript).join(" "); setText(prev=>{ const v=prev+(prev?" ":"")+t; save(v,paths); return v; }); };
+    r.onerror=()=>setListening(false); r.onend=()=>setListening(false);
+    recognitionRef.current=r; r.start(); setListening(true);
+  };
+  const stopListening=()=>{ recognitionRef.current?.stop(); setListening(false); };
 
   useEffect(()=>{
     if(mode!=="draw"||!canvasRef.current) return;
@@ -408,7 +419,9 @@ function Chalk({ userId, dark, userEmail }) {
   const moveDraw=e=>{ if(!drawing) return; const canvas=canvasRef.current, pt=getPos(e,canvas), ctx=canvas.getContext("2d"); ctx.strokeStyle=color; ctx.lineWidth=size; ctx.lineCap="round"; ctx.lineJoin="round"; ctx.beginPath(); ctx.moveTo(lastPt.current.x,lastPt.current.y); ctx.lineTo(pt.x,pt.y); ctx.stroke(); lastPt.current=pt; setPaths(prev=>{ const u=[...prev]; u[u.length-1]={...u[u.length-1],pts:[...u[u.length-1].pts,pt]}; return u; }); };
   const endDraw=()=>{ setDrawing(false); save(text,paths); };
   const eraseLast=()=>{ const p=paths.slice(0,-1); setPaths(p); save(text,p); };
-  const clearAll=()=>{ setText(""); const p=[]; setPaths(p); save("",p); if(canvasRef.current){ const ctx=canvasRef.current.getContext("2d"); ctx.clearRect(0,0,canvasRef.current.width,canvasRef.current.height); } };
+  const clearText=()=>{ setText(""); save("",paths); };
+  const clearDraw=()=>{ const p=[]; setPaths(p); save(text,p); if(canvasRef.current){ const ctx=canvasRef.current.getContext("2d"); ctx.clearRect(0,0,canvasRef.current.width,canvasRef.current.height); } };
+  const clearAll=()=>{ if(mode==="type") clearText(); else clearDraw(); };
 
   const COLORS=["#ffffff","#ffeb3b","#ff8a80","#80d8ff","#b9f6ca","#ea80fc","#ff6d00","#1de9b6"];
   const pieces=[{w:44,c:"#F5F0E8"},{w:28,c:"#E8C49A"},{w:38,c:"#C8DDB0"},{w:22,c:"#A8C4D8"},{w:34,c:"#D4B8E0"}];
@@ -811,6 +824,7 @@ function Calendar({ userId, userEmail }) {
   const evtsRef=useRef({});
   const [loaded,setLoaded]=useState(false);
   const [showShareModal,setShowShareModal]=useState(false);
+  const [showShareDayModal,setShowShareDayModal]=useState(false);
   const now=new Date();
 
   useEffect(()=>{
@@ -867,7 +881,12 @@ function Calendar({ userId, userEmail }) {
           <div style={{background:C.r,borderRadius:10,padding:"6px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
             <div style={{fontFamily:"'Nunito',sans-serif",fontSize:20,fontWeight:900,color:"#fff"}}>{selDay}</div>
             <div style={{color:"rgba(255,255,255,.7)",fontSize:12,fontWeight:700}}>{selMonth!=null?MONTHS[selMonth-1]+" "+selKey.split("-")[0]:""}</div>
+            <button onClick={()=>setShowShareDayModal(true)} style={{marginLeft:"auto",background:"rgba(255,255,255,.2)",border:"none",borderRadius:8,padding:"4px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+              Share Day
+            </button>
           </div>
+          {showShareDayModal&&<ShareModal title={(selMonth!=null?MONTHS[selMonth-1]+" ":"")+selDay} userId={userId} onClose={()=>setShowShareDayModal(false)} onSend={async(toEmail)=>{ return await sendShared(userEmail,toEmail,"calendar_day",(selMonth!=null?MONTHS[selMonth-1]+" ":"")+selDay,{[selKey]:evtsRef.current[selKey]||""}); }}/>}
           <CalendarNote key={selKey} selKey={selKey} evtsRef={evtsRef} userId={userId} onUpdate={updated=>setEvts({...updated})}/>
         </div>
       ):(
@@ -1203,6 +1222,343 @@ function Health({ userId }) {
   );
 }
 
+
+// ──────────────────────────────────────────────
+// MESSAGING / CHAT
+// ──────────────────────────────────────────────
+async function getOrCreateProfile(userId, email) {
+  const { data } = await sb.from("user_profiles").select("*").eq("id", userId).single();
+  if (data) return data;
+  const username = email.split("@")[0];
+  await sb.from("user_profiles").upsert({ id: userId, email, username, updated_at: new Date().toISOString() }, { onConflict: "id" });
+  return { id: userId, email, username };
+}
+
+async function searchUserByEmail(email) {
+  const { data } = await sb.from("user_profiles").select("*").eq("email", email.trim().toLowerCase()).single();
+  return data || null;
+}
+
+async function loadMessages(myId, otherId) {
+  const { data } = await sb.from("messages")
+    .select("*")
+    .or(`and(from_id.eq.${myId},to_id.eq.${otherId}),and(from_id.eq.${otherId},to_id.eq.${myId})`)
+    .order("created_at", { ascending: true });
+  return data || [];
+}
+
+async function sendMessage(fromId, toId, fromEmail, content, type="text") {
+  const { error } = await sb.from("messages").insert({ from_id: fromId, to_id: toId, from_email: fromEmail, content, type });
+  return error;
+}
+
+async function markMessagesRead(fromId, toId) {
+  await sb.from("messages").update({ read: true }).eq("from_id", fromId).eq("to_id", toId).eq("read", false);
+}
+
+// ── ChatDrawCanvas — mini chalk inside chat ──
+function ChatDrawCanvas({ onSend, dark }) {
+  const [paths, setPaths] = useState([]);
+  const [drawing, setDrawing] = useState(false);
+  const [color, setColor] = useState("#000000");
+  const canvasRef = useRef(null);
+  const lastPt = useRef(null);
+
+  const bgColor = dark ? "#1C2C1C" : "#f0f4ec";
+  const COLORS = ["#000000","#C8220A","#1565C0","#2E7D32","#F57F17","#ffffff"];
+
+  useEffect(()=>{
+    const canvas = canvasRef.current; if(!canvas) return;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle = bgColor; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.lineCap="round"; ctx.lineJoin="round";
+    paths.forEach(path=>{
+      if(!path.pts||path.pts.length<2) return;
+      ctx.strokeStyle=path.color||"#000"; ctx.lineWidth=path.size||2;
+      ctx.beginPath(); ctx.moveTo(path.pts[0].x,path.pts[0].y);
+      path.pts.slice(1).forEach(pt=>ctx.lineTo(pt.x,pt.y)); ctx.stroke();
+    });
+  },[paths,dark]);
+
+  useEffect(()=>{
+    const canvas=canvasRef.current; if(!canvas) return;
+    const prevent=e=>e.preventDefault();
+    canvas.addEventListener("touchstart",prevent,{passive:false});
+    canvas.addEventListener("touchmove",prevent,{passive:false});
+    return()=>{ canvas.removeEventListener("touchstart",prevent); canvas.removeEventListener("touchmove",prevent); };
+  },[]);
+
+  const getPos=(e,canvas)=>{ const r=canvas.getBoundingClientRect(), t=e.touches?.[0]||e.changedTouches?.[0]||e; return {x:(t.clientX-r.left)*(canvas.width/r.width),y:(t.clientY-r.top)*(canvas.height/r.height)}; };
+  const startDraw=e=>{ const pt=getPos(e,canvasRef.current); lastPt.current=pt; setDrawing(true); setPaths(prev=>[...prev,{color,size:2,pts:[pt]}]); };
+  const moveDraw=e=>{ if(!drawing) return; const canvas=canvasRef.current, pt=getPos(e,canvas), ctx=canvas.getContext("2d"); ctx.strokeStyle=color; ctx.lineWidth=2; ctx.lineCap="round"; ctx.beginPath(); ctx.moveTo(lastPt.current.x,lastPt.current.y); ctx.lineTo(pt.x,pt.y); ctx.stroke(); lastPt.current=pt; setPaths(prev=>{ const u=[...prev]; u[u.length-1]={...u[u.length-1],pts:[...u[u.length-1].pts,pt]}; return u; }); };
+  const endDraw=()=>setDrawing(false);
+  const clear=()=>{ setPaths([]); const ctx=canvasRef.current?.getContext("2d"); if(ctx){ ctx.fillStyle=bgColor; ctx.fillRect(0,0,800,600); } };
+
+  return(
+    <div style={{display:"flex",flexDirection:"column",gap:8,padding:"10px 0"}}>
+      <div style={{borderRadius:12,overflow:"hidden",border:"1.5px solid #E8D5D0",background:bgColor}}>
+        <div style={{display:"flex",gap:6,padding:"6px 10px",background:"rgba(0,0,0,.06)",alignItems:"center",flexWrap:"wrap"}}>
+          {COLORS.map(col=><button key={col} onClick={()=>setColor(col)} style={{width:color===col?22:16,height:color===col?22:16,borderRadius:"50%",background:col,border:color===col?"2px solid "+C.r:"2px solid #ccc",cursor:"pointer",transition:"all .15s"}}/>)}
+          <button onClick={clear} style={{marginLeft:"auto",background:"none",border:"none",cursor:"pointer",fontSize:11,color:C.g,fontWeight:700}}>Clear</button>
+        </div>
+        <canvas ref={canvasRef} width={800} height={400}
+          onMouseDown={startDraw} onMouseMove={moveDraw} onMouseUp={endDraw} onMouseLeave={endDraw}
+          onTouchStart={startDraw} onTouchMove={moveDraw} onTouchEnd={endDraw}
+          style={{width:"100%",height:140,cursor:"crosshair",display:"block",touchAction:"none"}}
+        />
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <button onClick={()=>{ if(paths.length>0) onSend({paths},  "drawing"); }} style={{...btn(C.r),flex:1,fontSize:13,padding:"9px"}}>Send Drawing</button>
+        <button onClick={clear} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",padding:"9px 14px",fontSize:13}}>✕</button>
+      </div>
+    </div>
+  );
+}
+
+// ── Chat window ──
+function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, onClose }) {
+  const [msgs, setMsgs] = useState([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const [showDraw, setShowDraw] = useState(false);
+  const bottomRef = useRef(null);
+  const pollRef = useRef(null);
+  const bg = dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":C.bd, txt=dark?"#F2F2F7":C.k;
+
+  const load = async () => {
+    const data = await loadMessages(myId, friend.id);
+    setMsgs(data);
+    await markMessagesRead(friend.id, myId);
+  };
+
+  useEffect(()=>{ load(); pollRef.current=setInterval(load,5000); return()=>clearInterval(pollRef.current); },[friend.id]);
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:"smooth"}); },[msgs]);
+
+  const send = async (content, type="text") => {
+    if(!content&&type==="text") return;
+    const payload = type==="text" ? {text:content} : content;
+    setSending(true);
+    await sendMessage(myId, friend.id, myEmail, payload, type);
+    setInput(""); setShowDraw(false);
+    await load();
+    setSending(false);
+  };
+
+  const renderMsg = (m) => {
+    const isMe = m.from_id === myId;
+    const bubbleBg = isMe ? C.r : bg2;
+    const bubbleTxt = isMe ? "#fff" : txt;
+    const align = isMe ? "flex-end" : "flex-start";
+    const time = new Date(m.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+
+    return(
+      <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:align,marginBottom:10}}>
+        {m.type==="drawing" ? (
+          <div style={{maxWidth:"75%",background:bubbleBg,borderRadius:14,padding:10,border:"1.5px solid "+bdr}}>
+            <DrawingPreview paths={m.content?.paths||[]} dark={dark}/>
+            <div style={{display:"flex",gap:8,marginTop:8,justifyContent:"flex-end"}}>
+              {!isMe&&<button onClick={()=>onSaveToChalk({paths:m.content?.paths||[],text:""})} style={{...btn(C.r),fontSize:11,padding:"5px 10px",borderRadius:8}}>+ Save to Chalk</button>}
+            </div>
+            <div style={{fontSize:10,color:isMe?"rgba(255,255,255,.5)":C.g,marginTop:4,textAlign:"right"}}>{time}</div>
+          </div>
+        ) : (
+          <div style={{maxWidth:"75%",background:bubbleBg,borderRadius:14,padding:"9px 13px",border:isMe?"none":"1.5px solid "+bdr}}>
+            {m.content?.text&&<div style={{fontSize:14,color:bubbleTxt,lineHeight:1.5,wordBreak:"break-word"}}>{m.content.text}</div>}
+            <div style={{fontSize:10,color:isMe?"rgba(255,255,255,.5)":C.g,marginTop:3,textAlign:"right"}}>{time}</div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  return(
+    <div style={{position:"fixed",inset:0,background:bg,zIndex:700,display:"flex",flexDirection:"column",fontFamily:"'Nunito',sans-serif"}}>
+      {/* Header */}
+      <div style={{background:dark?"#2C2C2E":"#fff",borderBottom:"1.5px solid "+bdr,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,flexShrink:0}}>
+        <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:22,fontWeight:900,lineHeight:1}}>‹</button>
+        <div style={{width:36,height:36,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:900,color:"#fff",flexShrink:0}}>
+          {(friend.username||friend.email)?.[0]?.toUpperCase()}
+        </div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontWeight:800,fontSize:15,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{friend.username||friend.email}</div>
+          <div style={{fontSize:11,color:C.g,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{friend.email}</div>
+        </div>
+      </div>
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",padding:"14px 16px"}}>
+        {msgs.length===0&&<div style={{textAlign:"center",color:C.g,padding:40,fontSize:14}}>No messages yet. Say hi!</div>}
+        {msgs.map(renderMsg)}
+        <div ref={bottomRef}/>
+      </div>
+      {/* Draw canvas */}
+      {showDraw&&<div style={{padding:"0 16px",flexShrink:0,borderTop:"1.5px solid "+bdr,background:dark?"#2C2C2E":"#fff"}}><ChatDrawCanvas onSend={send} dark={dark}/></div>}
+      {/* Input */}
+      <div style={{background:dark?"#2C2C2E":"#fff",borderTop:"1.5px solid "+bdr,padding:"10px 12px",display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+        <button onClick={()=>setShowDraw(!showDraw)} style={{width:40,height:40,borderRadius:12,background:showDraw?C.r:dark?"#3A3A3C":"#F5F0EE",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={showDraw?"#fff":C.r} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </button>
+        <textarea value={input} onChange={e=>setInput(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(input.trim()); } }}
+          placeholder="Message..." rows={1}
+          style={{flex:1,padding:"10px 13px",borderRadius:12,border:"1.5px solid "+bdr,fontSize:14,outline:"none",resize:"none",background:dark?"#3A3A3C":"#F5F0EE",color:txt,fontFamily:"'Nunito',sans-serif",lineHeight:1.4,maxHeight:100,overflowY:"auto"}}
+        ></textarea>
+        <button onClick={()=>send(input.trim())} disabled={!input.trim()||sending} style={{width:40,height:40,borderRadius:12,background:input.trim()?C.r:"#ddd",border:"none",cursor:input.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function DrawingPreview({ paths, dark }) {
+  const canvasRef = useRef(null);
+  const bg = dark?"#1C2C1C":"#f0f4ec";
+  useEffect(()=>{
+    const canvas=canvasRef.current; if(!canvas) return;
+    const ctx=canvas.getContext("2d");
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle=bg; ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.lineCap="round"; ctx.lineJoin="round";
+    (paths||[]).forEach(path=>{
+      if(!path.pts||path.pts.length<2) return;
+      ctx.strokeStyle=path.color||"#000"; ctx.lineWidth=path.size||2;
+      ctx.beginPath(); ctx.moveTo(path.pts[0].x,path.pts[0].y);
+      path.pts.slice(1).forEach(pt=>ctx.lineTo(pt.x,pt.y)); ctx.stroke();
+    });
+  },[paths,dark]);
+  return <canvas ref={canvasRef} width={800} height={400} style={{width:"100%",height:100,borderRadius:8,display:"block"}}/>;
+}
+
+// ── Friends list + messaging hub ──
+function Messages({ userId, userEmail, dark, onSaveToChalk }) {
+  const [profile, setProfile] = useState(null);
+  const [friends, setFriends] = useState([]);
+  const [activeFriend, setActiveFriend] = useState(null);
+  const [addEmail, setAddEmail] = useState("");
+  const [addState, setAddState] = useState("idle");
+  const [showAdd, setShowAdd] = useState(false);
+  const [editName, setEditName] = useState(false);
+  const [nameVal, setNameVal] = useState("");
+  const [unread, setUnread] = useState({});
+  const [loaded, setLoaded] = useState(false);
+  const bg=dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":C.bd, txt=dark?"#F2F2F7":C.k, sub=dark?"#8E8E93":C.g;
+
+  useEffect(()=>{
+    getOrCreateProfile(userId, userEmail).then(p=>{ setProfile(p); setNameVal(p.username||""); });
+    dbLoad(userId,"friends").then(v=>{ if(v) setFriends(v); setLoaded(true); });
+  },[userId]);
+
+  // Poll unread counts
+  useEffect(()=>{
+    const checkUnread=async()=>{
+      if(!friends.length) return;
+      const counts={};
+      for(const f of friends){
+        const {count}=await sb.from("messages").select("*",{count:"exact",head:true}).eq("from_id",f.id).eq("to_id",userId).eq("read",false);
+        if(count>0) counts[f.id]=count;
+      }
+      setUnread(counts);
+    };
+    checkUnread();
+    const t=setInterval(checkUnread,10000);
+    return()=>clearInterval(t);
+  },[friends,userId]);
+
+  const saveFriends=async(list)=>{ setFriends(list); await dbSave(userId,"friends",list); };
+
+  const addFriend=async()=>{
+    if(!addEmail.trim()) return;
+    setAddState("searching");
+    const found=await searchUserByEmail(addEmail.trim().toLowerCase());
+    if(!found){ setAddState("notfound"); setTimeout(()=>setAddState("idle"),3000); return; }
+    if(found.id===userId){ setAddState("self"); setTimeout(()=>setAddState("idle"),3000); return; }
+    if(friends.find(f=>f.id===found.id)){ setAddState("exists"); setTimeout(()=>setAddState("idle"),3000); return; }
+    await saveFriends([...friends,{id:found.id,email:found.email,username:found.username||found.email.split("@")[0]}]);
+    setAddEmail(""); setShowAdd(false); setAddState("idle");
+  };
+
+  const saveName=async()=>{
+    if(!nameVal.trim()) return;
+    await sb.from("user_profiles").upsert({id:userId,email:userEmail,username:nameVal.trim(),updated_at:new Date().toISOString()},{onConflict:"id"});
+    setProfile(p=>({...p,username:nameVal.trim()}));
+    setEditName(false);
+  };
+
+  const handleSaveToChalk=async(data)=>{ await onSaveToChalk(data); };
+
+  if(activeFriend) return(
+    <ChatWindow myId={userId} myEmail={userEmail} myUsername={profile?.username||userEmail} friend={activeFriend} dark={dark}
+      onSaveToChalk={handleSaveToChalk} onClose={()=>setActiveFriend(null)}/>
+  );
+
+  return(
+    <div style={{flex:1,display:"flex",flexDirection:"column",gap:12,minHeight:0}}>
+      {/* Profile / username */}
+      <div style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"12px 16px",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <div style={{width:40,height:40,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0}}>
+            {(profile?.username||userEmail)?.[0]?.toUpperCase()}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            {editName ? (
+              <div style={{display:"flex",gap:7,alignItems:"center"}}>
+                <input style={{...inp,flex:1,padding:"6px 10px",fontSize:14}} value={nameVal} onChange={e=>setNameVal(e.target.value)} onKeyDown={e=>e.key==="Enter"&&saveName()} autoFocus/>
+                <button onClick={saveName} style={{...btn(C.r),padding:"6px 12px",fontSize:13}}>Save</button>
+                <button onClick={()=>setEditName(false)} style={{background:"none",border:"none",cursor:"pointer",color:sub,fontSize:18}}>×</button>
+              </div>
+            ) : (
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontWeight:800,fontSize:15,color:txt}}>{profile?.username||userEmail.split("@")[0]}</span>
+                <button onClick={()=>setEditName(true)} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:12,fontWeight:700}}>Edit</button>
+              </div>
+            )}
+            <div style={{fontSize:11,color:sub,marginTop:1}}>{userEmail}</div>
+          </div>
+        </div>
+      </div>
+      {/* Add friend */}
+      <div style={{flexShrink:0}}>
+        {!showAdd ? (
+          <button onClick={()=>setShowAdd(true)} style={{...btn(C.r),width:"100%",borderRadius:12,padding:"11px",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg>
+            Add Friend
+          </button>
+        ) : (
+          <div style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"12px 14px"}}>
+            <input style={{...inp,marginBottom:10}} value={addEmail} onChange={e=>setAddEmail(e.target.value)} onKeyDown={e=>e.key==="Enter"&&addFriend()} placeholder="Friend's Script email" autoFocus/>
+            {addState==="notfound"&&<div style={{color:"#ff6060",fontSize:12,marginBottom:8}}>No user found with that email.</div>}
+            {addState==="exists"&&<div style={{color:C.g,fontSize:12,marginBottom:8}}>Already in your friends list.</div>}
+            {addState==="self"&&<div style={{color:C.g,fontSize:12,marginBottom:8}}>That's your own email!</div>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={addFriend} disabled={addState==="searching"} style={{...btn(C.r),flex:1,fontSize:13,padding:"9px"}}>{addState==="searching"?"Searching...":"Add"}</button>
+              <button onClick={()=>{setShowAdd(false);setAddEmail("");setAddState("idle");}} style={{...btn("#fff",C.k),border:"1.5px solid "+bdr,flex:1,fontSize:13,padding:"9px"}}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+      {/* Friends list */}
+      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
+        {!loaded&&<Spinner msg="Loading..."/>}
+        {loaded&&friends.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>No friends yet. Add one above!</div>}
+        {friends.map(f=>(
+          <div key={f.id} onClick={()=>setActiveFriend(f)} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+            <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0,position:"relative"}}>
+              {(f.username||f.email)?.[0]?.toUpperCase()}
+              {unread[f.id]>0&&<div style={{position:"absolute",top:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"#ff3b30",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#fff"}}>{unread[f.id]}</div>}
+            </div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:14,color:txt}}>{f.username||f.email.split("@")[0]}</div>
+              <div style={{fontSize:11,color:sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.email}</div>
+            </div>
+            <div style={{color:sub,fontSize:18}}>›</div>
+            <button onClick={e=>{e.stopPropagation();saveFriends(friends.filter(x=>x.id!==f.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:16,marginLeft:-8}}>×</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 // ── SETTINGS ──
 function Settings({ user, dark, setDark, onClose }) {
   const [tab,setTab]=useState("account");
@@ -1291,6 +1647,7 @@ const NAV=[
   {id:"calendar", label:"Calendar", color:"#6B3FA0", App:Calendar},
   {id:"money",    label:"Money",    color:"#1B6B35", App:Money},
   {id:"health",   label:"Health",   color:"#B5174A", App:Health},
+  {id:"messages", label:"Chat",     color:"#0077CC", App:Messages},
 ];
 
 export default function Script() {
@@ -1298,6 +1655,7 @@ export default function Script() {
   const [active,setActive]=useState("chalk");
   const [chalkKey,setChalkKey]=useState(0);
   const [showMenu,setShowMenu]=useState(false);
+  const [msgUnread,setMsgUnread]=useState(0);
   const [showSett,setShowSett]=useState(false);
   const [dark,setDark]=useState(()=>{ try{ return localStorage.getItem("script_dark")==="1"; }catch(e){ return false; } });
   const [booting,setBooting]=useState(true);
@@ -1357,11 +1715,12 @@ export default function Script() {
       await dbSave(user.id,"cal",merged);
       setActive("calendar");
     } else if(item.type==="calendar_day") {
-      // Save single day
+      // Save single day — data is {key: noteText}
       const existing = await dbLoad(user.id,"cal")||{};
-      const key = item.dayKey;
-      const note = item.data;
-      existing[key]=existing[key]?existing[key]+"\n--- From "+item.from_email+" ---\n"+note:note;
+      const dayData = item.data||{};
+      Object.entries(dayData).forEach(([k,v])=>{
+        if(v) existing[k]=existing[k]?existing[k]+"\n--- From "+item.from_email+" ---\n"+v:v;
+      });
       await dbSave(user.id,"cal",existing);
       setActive("calendar");
     }
@@ -1423,7 +1782,17 @@ export default function Script() {
         <h1 style={{margin:0,fontSize:22,fontWeight:900,color:cur?.color||D.text,fontFamily:"'Nunito',sans-serif"}}>{cur?.label}</h1>
       </div>
       <div style={{flex:1,padding:"14px 16px",overflow:"hidden",display:"flex",flexDirection:"column"}}>
-        <App key={active==="chalk"?chalkKey:active} userId={user.id} dark={dark} userEmail={user.email||""}/>
+        <App key={active==="chalk"?chalkKey:active} userId={user.id} dark={dark} userEmail={user.email||""}
+          {...(active==="messages"?{onSaveToChalk:async(data)=>{
+            const existing=await dbLoad(user.id,"chalk");
+            const newText=(existing?.text||"")+(existing?.text?"
+
+--- Drawing from chat ---":"--- Drawing from chat ---");
+            const newPaths=[...(existing?.paths||[]),...(data.paths||[])];
+            await dbSave(user.id,"chalk",{text:newText,paths:newPaths});
+            setChalkKey(k=>k+1); setActive("chalk");
+          }}:{})
+        }/>
       </div>
       <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0}}>
         <div style={{display:"flex",paddingTop:22}}>
