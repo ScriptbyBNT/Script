@@ -169,7 +169,9 @@ async function loadChatShares(userEmail) {
 }
 async function loadInbox(userEmail) {
   const { data, error } = await sb.from("shared_inbox")
-    .select("*").eq("to_email", userEmail.trim().toLowerCase())
+    .select("*")
+    .eq("to_email", userEmail.trim().toLowerCase())
+    .neq("type", "shared_chat")  // never show chat messages as bell notifications
     .order("created_at", { ascending: false });
   if(error){ console.error("inbox error", error); return []; }
   return data || [];
@@ -306,12 +308,12 @@ function ShareModal({ title, onSend, onClose, userId }) {
 function InboxModal({ items, onAccept, onDismiss, onClose }) {
   return (
     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:600,display:"flex",alignItems:"flex-end"}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxHeight:"70vh",display:"flex",flexDirection:"column",padding:"20px 0 40px"}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",maxHeight:"85vh",display:"flex",flexDirection:"column",padding:"20px 0 0"}}>
         <div style={{display:"flex",justifyContent:"center",paddingBottom:8}}>
           <div style={{width:40,height:4,borderRadius:2,background:"#E8D5D0"}}/>
         </div>
         <div style={{fontWeight:900,fontSize:17,color:C.k,padding:"0 20px",marginBottom:12}}>Shared with you</div>
-        <div style={{flex:1,overflowY:"auto",padding:"0 20px",display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{flex:1,overflowY:"auto",padding:"0 20px 20px",display:"flex",flexDirection:"column",gap:10,WebkitOverflowScrolling:"touch"}}>
           {items.map(item=>(
             <div key={item.id} style={{background:"#F5F0EE",borderRadius:14,padding:"13px 15px"}}>
               <div style={{fontWeight:700,fontSize:14,color:C.k,marginBottom:2}}>{item.title}</div>
@@ -2127,8 +2129,8 @@ export default function Script() {
       const sharedData = item.data;
       let newText, newPaths;
       if(typeof sharedData === "object" && sharedData.paths) {
-        // Drawing share — append text and merge paths
-        newText = existText ? existText+"\n\n--- Drawing from "+item.from_email+" ---" : "--- Drawing from "+item.from_email+" ---";
+        // Drawing share — just merge paths, don't add text label
+        newText = existText;
         newPaths = [...existPaths, ...sharedData.paths];
       } else {
         // Text share
@@ -2161,13 +2163,16 @@ export default function Script() {
       await dbSave(user.id,"cal",existing);
       setActive("calendar");
     }
-    await deleteInboxItem(item.id);
+    // Only delete bell notification items, NOT shared_chat (those are permanent chat history)
+    if(item.type !== "shared_chat") {
+      await deleteInboxItem(item.id);
+    }
     setInbox(prev=>prev.filter(x=>x.id!==item.id));
     setShowInbox(false);
   };
   const handleSaveToChalk=async(data)=>{
     const existing=await dbLoad(user.id,"chalk");
-    const newText=(existing?.text||"")+(existing?.text?"\n\n--- Drawing from chat ---":"--- Drawing from chat ---");
+    const newText=existing?.text||"";
     const newPaths=[...(existing?.paths||[]),...(data.paths||[])];
     await dbSave(user.id,"chalk",{text:newText,paths:newPaths});
     setChalkKey(k=>k+1); setActive("chalk");
@@ -2234,7 +2239,7 @@ export default function Script() {
       <div style={{flex:1,padding:"14px 16px",overflow:"hidden",display:"flex",flexDirection:"column"}}>
         <App key={active==="chalk"?chalkKey:active} userId={user.id} dark={dark} userEmail={user.email||""} onSaveToChalk={handleSaveToChalk}/>
       </div>
-      <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0,paddingBottom:"env(safe-area-inset-bottom,20px)"}}>
+      <div style={{background:D.headerBg,borderTop:"1.5px solid "+D.border,flexShrink:0,paddingBottom:"max(env(safe-area-inset-bottom),20px)"}}>
         <div style={{display:"flex"}}>
           {NAV.map(n=>{ const on=active===n.id; return(
             <button key={n.id} onClick={()=>setActive(n.id)} style={{flex:1,paddingTop:8,paddingBottom:8,paddingLeft:4,paddingRight:4,border:"none",background:on?n.color:D.headerBg,cursor:"pointer",display:"flex",flexDirection:"column",alignItems:"center",gap:2,transition:"background .15s"}}>
@@ -2255,7 +2260,7 @@ export default function Script() {
           </div>
         </div>
       )}
-      {showInbox&&<InboxModal items={inbox} onAccept={acceptShared} onDismiss={async(id)=>{ await deleteInboxItem(id); setInbox(prev=>prev.filter(x=>x.id!==id)); }} onClose={()=>setShowInbox(false)}/>}
+      {showInbox&&<InboxModal items={inbox} onAccept={acceptShared} onDismiss={async(id)=>{ const item=inbox.find(x=>x.id===id); if(item?.type!=="shared_chat") await deleteInboxItem(id); setInbox(prev=>prev.filter(x=>x.id!==id)); }} onClose={()=>setShowInbox(false)}/>}
       {showSett&&<Settings user={user} dark={dark} setDark={setDark} onClose={()=>setShowSett(false)}/>}
     </div>
   );
