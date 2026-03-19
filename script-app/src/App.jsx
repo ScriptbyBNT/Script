@@ -225,7 +225,21 @@ async function sendPushToUser(toUserId, title, body, tag="script", type="general
 
 async function loadNotifSettings(userId) {
   const v = await dbLoad(userId, "notif_settings");
-  return v || { messages: true, shared_items: true, appointments: true, medications: true };
+  return v || { messages:true, shared_items:true, appointments:true, medications:true, enabled:false };
+}
+
+async function scheduleNotification(userId, type, title, body, sendAt) {
+  await sb.from("scheduled_notifications").insert({
+    user_id: userId, type, title, body,
+    send_at: sendAt instanceof Date ? sendAt.toISOString() : sendAt,
+    sent: false
+  });
+}
+
+async function cancelScheduledNotif(userId, type, refText) {
+  await sb.from("scheduled_notifications")
+    .delete().eq("user_id", userId).eq("type", type).eq("sent", false)
+    .ilike("body", "%"+refText+"%");
 }
 
 
@@ -946,6 +960,9 @@ function Calendar({ userId, userEmail }) {
   const [loaded,setLoaded]=useState(false);
   const [showShareModal,setShowShareModal]=useState(false);
   const [showShareDayModal,setShowShareDayModal]=useState(false);
+  const [showReminderModal,setShowReminderModal]=useState(false);
+  const [reminderTime,setReminderTime]=useState("");
+  const [reminderSaving,setReminderSaving]=useState(false);
   const now=new Date();
 
   useEffect(()=>{
@@ -1002,12 +1019,41 @@ function Calendar({ userId, userEmail }) {
           <div style={{background:C.r,borderRadius:10,padding:"6px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
             <div style={{fontFamily:"'Nunito',sans-serif",fontSize:20,fontWeight:900,color:"#fff"}}>{selDay}</div>
             <div style={{color:"rgba(255,255,255,.7)",fontSize:12,fontWeight:700}}>{selMonth!=null?MONTHS[selMonth-1]+" "+selKey.split("-")[0]:""}</div>
+            <button onClick={()=>setShowReminderModal(true)} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"4px 8px",color:"#fff",fontSize:13,cursor:"pointer"}}>🔔</button>
             <button onClick={()=>setShowShareDayModal(true)} style={{marginLeft:"auto",background:"rgba(255,255,255,.2)",border:"none",borderRadius:8,padding:"4px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
               Share Day
             </button>
           </div>
           {showShareDayModal&&<ShareModal title={(selMonth!=null?MONTHS[selMonth-1]+" ":"")+selDay} userId={userId} onClose={()=>setShowShareDayModal(false)} onSend={async(toEmail)=>{ return await sendShared(userEmail,toEmail,"calendar_day",(selMonth!=null?MONTHS[selMonth-1]+" ":"")+selDay,{[selKey]:evtsRef.current[selKey]||""}); }}/>}
+          {showReminderModal&&(
+            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:600,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowReminderModal(false)}>
+              <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",padding:"20px 20px 40px"}}>
+                <div style={{fontWeight:900,fontSize:17,color:C.k,marginBottom:4}}>Set Reminder</div>
+                <div style={{fontSize:13,color:C.g,marginBottom:16}}>{selMonth!=null?MONTHS[selMonth-1]:""} {selDay}</div>
+                <div style={{marginBottom:16}}>
+                  <div style={{fontSize:12,color:C.g,marginBottom:6,fontWeight:700}}>Alert time</div>
+                  <input type="datetime-local" value={reminderTime} onChange={e=>setReminderTime(e.target.value)}
+                    style={{...inp,fontSize:16}} min={new Date().toISOString().slice(0,16)}/>
+                </div>
+                <div style={{display:"flex",gap:8}}>
+                  <button onClick={async()=>{
+                    if(!reminderTime) return;
+                    setReminderSaving(true);
+                    const note = evtsRef.current[selKey]||"No notes";
+                    await scheduleNotification(userId,"calendar","Calendar Reminder",
+                      (selMonth!=null?MONTHS[selMonth-1]:"")+" "+selDay+": "+note.slice(0,80),
+                      new Date(reminderTime)
+                    );
+                    setReminderSaving(false); setShowReminderModal(false); setReminderTime("");
+                  }} disabled={!reminderTime||reminderSaving} style={{...btn(C.r),flex:1}}>
+                    {reminderSaving?"Saving...":"Set Reminder"}
+                  </button>
+                  <button onClick={()=>setShowReminderModal(false)} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",flex:1}}>Cancel</button>
+                </div>
+              </div>
+            </div>
+          )}
           <CalendarNote key={selKey} selKey={selKey} evtsRef={evtsRef} userId={userId} onUpdate={updated=>setEvts({...updated})}/>
         </div>
       ):(
@@ -1307,6 +1353,10 @@ function Health({ userId }) {
                 <input style={inp} value={editItemData.date||""} onChange={e=>setEditItemData(f=>({...f,date:e.target.value}))} placeholder="Date"/>
                 <input style={inp} value={editItemData.location||""} onChange={e=>setEditItemData(f=>({...f,location:e.target.value}))} placeholder="Location"/>
                 <input style={inp} value={editItemData.notes||""} onChange={e=>setEditItemData(f=>({...f,notes:e.target.value}))} placeholder="Notes"/>
+                <div>
+                  <div style={{fontSize:12,color:C.g,marginBottom:4,fontWeight:700}}>🔔 Reminder alert</div>
+                  <input type="datetime-local" style={{...inp,fontSize:16}} value={editItemData.reminder_time||""} onChange={e=>setEditItemData(f=>({...f,reminder_time:e.target.value}))} min={new Date().toISOString().slice(0,16)}/>
+                </div>
               </>}
               {tab==="meds"&&<>
                 <input style={inp} value={editItemData.name||""} onChange={e=>setEditItemData(f=>({...f,name:e.target.value}))} placeholder="Medication"/>
@@ -1314,13 +1364,36 @@ function Health({ userId }) {
                 <input style={inp} value={editItemData.frequency||""} onChange={e=>setEditItemData(f=>({...f,frequency:e.target.value}))} placeholder="Frequency"/>
                 <input style={inp} value={editItemData.prescriber||""} onChange={e=>setEditItemData(f=>({...f,prescriber:e.target.value}))} placeholder="Prescriber"/>
                 <input style={inp} value={editItemData.notes||""} onChange={e=>setEditItemData(f=>({...f,notes:e.target.value}))} placeholder="Notes"/>
+                <div>
+                  <div style={{fontSize:12,color:C.g,marginBottom:4,fontWeight:700}}>🔔 Next reminder</div>
+                  <input type="datetime-local" style={{...inp,fontSize:16}} value={editItemData.reminder_time||""} onChange={e=>setEditItemData(f=>({...f,reminder_time:e.target.value}))} min={new Date().toISOString().slice(0,16)}/>
+                </div>
               </>}
             </div>
             <div style={{display:"flex",gap:8,marginTop:16}}>
-              <button onClick={()=>{
+              <button onClick={async()=>{
                 if(tab==="docs") Sd(docs.map(x=>x.id===editItemId?{...x,...editItemData}:x));
-                else if(tab==="apts") Sa(apts.map(x=>x.id===editItemId?{...x,...editItemData}:x));
-                else Sm(meds.map(x=>x.id===editItemId?{...x,...editItemData}:x));
+                else if(tab==="apts") {
+                  Sa(apts.map(x=>x.id===editItemId?{...x,...editItemData}:x));
+                  if(editItemData.reminder_time) {
+                    await cancelScheduledNotif(userId,"appointment",editItemId);
+                    await scheduleNotification(userId,"appointment",
+                      "Appointment Reminder",
+                      (editItemData.title||"Appointment")+(editItemData.doctor?" with "+editItemData.doctor:"")+" — "+editItemId,
+                      new Date(editItemData.reminder_time)
+                    );
+                  }
+                } else {
+                  Sm(meds.map(x=>x.id===editItemId?{...x,...editItemData}:x));
+                  if(editItemData.reminder_time) {
+                    await cancelScheduledNotif(userId,"medication",editItemId);
+                    await scheduleNotification(userId,"medication",
+                      "Medication Reminder",
+                      "Time to take "+(editItemData.name||"your medication")+(editItemData.dosage?" — "+editItemData.dosage:"")+" — "+editItemId,
+                      new Date(editItemData.reminder_time)
+                    );
+                  }
+                }
                 setEditItemId(null);
               }} style={{...btn(),flex:1}}>Save</button>
               <button onClick={()=>setEditItemId(null)} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",flex:1}}>Cancel</button>
@@ -2085,11 +2158,12 @@ function Settings({ user, dark, setDark, onClose }) {
                   <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:pushEnabled?25:3,transition:"left .2s"}}/>
                 </button>
               </div>
-              {!pushEnabled&&<div style={{fontSize:11,color:sub,background:bg,borderRadius:8,padding:"8px 10px"}}>Tap enable, then tap Allow when prompted.</div>}
+              {!pushEnabled&&<div style={{fontSize:11,color:sub,background:bg,borderRadius:8,padding:"8px 10px"}}>Tap Enable, then tap Allow when your browser asks.</div>}
             </div>
-            {pushEnabled&&<div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
+            {pushEnabled&&<>
+            <div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
               <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Alert me for</div>
-              {[["messages","New messages in Scrypt Chat"],["shared_items","Items shared with me"],["appointments","Upcoming appointments"],["medications","Medication reminders"]].map(([key,label])=>(
+              {[["messages","💬 New messages"],["shared_items","📥 Items shared with me"],["appointments","📅 Appointment reminders"],["medications","💊 Medication reminders"]].map(([key,label])=>(
                 <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
                   <div style={{fontSize:14,color:txt,fontWeight:500}}>{label}</div>
                   <button onClick={()=>saveNotifSetting(key,!notifSettings[key])} style={{width:50,height:28,borderRadius:14,background:notifSettings[key]?C.r:"#E5E5EA",border:"none",cursor:"pointer",position:"relative",transition:"background .2s"}}>
@@ -2097,7 +2171,16 @@ function Settings({ user, dark, setDark, onClose }) {
                   </button>
                 </div>
               ))}
-            </div>}
+            </div>
+            <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
+              <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>How to set reminders</div>
+              <div style={{fontSize:12,color:sub,lineHeight:1.6}}>
+                📅 <span style={{fontWeight:700,color:txt}}>Calendar</span> — tap any day, tap the 🔔 icon to set an alert for that date.<br/>
+                💊 <span style={{fontWeight:700,color:txt}}>Medications</span> — tap 📎 on any med, tap Edit, set reminder time.<br/>
+                🏥 <span style={{fontWeight:700,color:txt}}>Appointments</span> — tap 📎 on any appointment, tap Edit, set reminder time.
+              </div>
+            </div>
+            </>}
           </>}
           {err&&<div style={{color:"#ff6060",fontSize:13,background:"rgba(255,80,80,.08)",borderRadius:10,padding:"10px 14px"}}>{err}</div>}
           {msg&&<div style={{color:"#34c759",fontSize:13,background:"rgba(52,199,89,.08)",borderRadius:10,padding:"10px 14px"}}>{msg}</div>}
