@@ -13,6 +13,7 @@ const C = { r:"#C8220A", g:"#7A7A7A", k:"#1C1C1E", rl:"#FFF3F1", rm:"#FFCCC4", b
 const SvgFood        = ({color="#fff",size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>;
 const SvgStore       = ({color="#fff",size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" y1="6" x2="21" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>;
 const SvgElectronics = ({color="#fff",size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2" ry="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>;
+const SvgCommute     = ({color="#fff",size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="1" y="3" width="15" height="13" rx="2"/><path d="M16 8h4l3 3v5h-7V8z"/><circle cx="5.5" cy="18.5" r="2.5"/><circle cx="18.5" cy="18.5" r="2.5"/></svg>;
 const SvgCar         = ({color="#fff",size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M5 17H3a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v9a2 2 0 0 1-2 2h-3"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg>;
 const SvgMortgage    = ({color="#fff",size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>;
 const SvgLoan        = ({color="#fff",size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>;
@@ -35,6 +36,7 @@ const MCATS_EXPENSE = [
   {id:"Store",         icon:(c,s)=><SvgStore color={c} size={s}/>,        color:"#1565C0"},
   {id:"Electronics",   icon:(c,s)=><SvgElectronics color={c} size={s}/>,  color:"#6A1B9A"},
   {id:"Car",           icon:(c,s)=><SvgCar color={c} size={s}/>,          color:"#4E342E"},
+  {id:"Commute",       icon:(c,s)=><SvgCommute color={c} size={s}/>,      color:"#00838F"},
   {id:"Mortgage/Rent", icon:(c,s)=><SvgMortgage color={c} size={s}/>,     color:"#4A148C"},
   {id:"Loan",          icon:(c,s)=><SvgLoan color={c} size={s}/>,         color:"#B71C1C"},
   {id:"Vacation",      icon:(c,s)=><SvgVacation color={c} size={s}/>,     color:"#0277BD"},
@@ -241,10 +243,11 @@ function ShareModal({ title, onSend, onClose, userId }) {
     } else { try{ const ls=JSON.parse(localStorage.getItem("script_recents")||"[]"); setRecents(ls); }catch(e){} }
   },[userId]);
 
-  const saveRecent = (em) => {
-    const updated = [em, ...recents.filter(r=>r!==em)].slice(0,6);
+  const saveRecent = async (em) => {
+    const updated = [em, ...recents.filter(r=>r!==em)].slice(0,20);
     setRecents(updated);
     try{ localStorage.setItem("script_recents", JSON.stringify(updated)); }catch(e){}
+    if(userId) await dbSave(userId, "share_recents", updated).catch(()=>{});
   };
 
   const send = async (toEmail) => {
@@ -489,7 +492,10 @@ function Chalk({ userId, dark, userEmail }) {
     });
   },[userId]);
 
-  const save=(t,p)=>{ clearTimeout(timer.current); timer.current=setTimeout(async()=>{ await dbSave(userId,"chalk",{text:t,paths:p}); },1200); };
+  const save=(t,p)=>{ 
+    try{ localStorage.setItem("chalk_cache_"+userId, JSON.stringify({text:t,paths:p})); }catch(e){}
+    clearTimeout(timer.current); timer.current=setTimeout(async()=>{ await dbSave(userId,"chalk",{text:t,paths:p}); },1200); 
+  };
   const onTextChange=val=>{ setText(val); save(val,paths); };
   const startListening=()=>{
     const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
@@ -1059,7 +1065,7 @@ function Money({ userId }) {
   const exp=monthTxns.filter(t=>t.type==="Expense").reduce((s,t)=>s+t.amount,0);
   const isCurrent=safeKey===curKey;
 
-  const CAT_MAP={"Grocery":"Food","grocery":"Food","food":"Food","Store":"Store","store":"Store","Electronics":"Electronics","electronics":"Electronics","Car":"Car","car":"Car","Mortgage/Rent":"Mortgage/Rent","Mortgage":"Mortgage/Rent","Rent":"Mortgage/Rent","Loan":"Loan","loan":"Loan","Work":"Work","work":"Work","Paycheck":"Work","paycheck":"Work","Salary":"Work","Vacation":"Vacation","vacation":"Vacation","ATM":"ATM","atm":"ATM","Subscription":"Subscription","subscription":"Subscription","Medical":"Medical","medical":"Medical","Health":"Medical","health":"Medical","Utilities":"Utilities","utilities":"Utilities","Real Estate":"Real Estate","Investment":"Investment","investment":"Investment","Invest":"Invest","invest":"Invest","Freelance":"Freelance","freelance":"Freelance","Gift":"Gift","gift":"Gift","Refund":"Refund","refund":"Refund","Other Income":"Other Income","Income":"Other Income","Other":"Other","other":"Other"};
+  const CAT_MAP={"Grocery":"Food","grocery":"Food","food":"Food","Store":"Store","store":"Store","Electronics":"Electronics","electronics":"Electronics","Car":"Car","car":"Car","Commute":"Commute","commute":"Commute","Transit":"Commute","Bus":"Commute","Train":"Commute","Mortgage/Rent":"Mortgage/Rent","Mortgage":"Mortgage/Rent","Rent":"Mortgage/Rent","Loan":"Loan","loan":"Loan","Work":"Work","work":"Work","Paycheck":"Work","paycheck":"Work","Salary":"Work","Vacation":"Vacation","vacation":"Vacation","ATM":"ATM","atm":"ATM","Subscription":"Subscription","subscription":"Subscription","Medical":"Medical","medical":"Medical","Health":"Medical","health":"Medical","Utilities":"Utilities","utilities":"Utilities","Real Estate":"Real Estate","Investment":"Investment","investment":"Investment","Invest":"Invest","invest":"Invest","Freelance":"Freelance","freelance":"Freelance","Gift":"Gift","gift":"Gift","Refund":"Refund","refund":"Refund","Other Income":"Other Income","Income":"Other Income","Other":"Other","other":"Other"};
 
   if(!loaded) return <Spinner msg="Loading transactions..."/>;
   return(
@@ -1528,20 +1534,31 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
   const msgsRef = useRef([]);
   const bg = dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":C.bd, txt=dark?"#F2F2F7":C.k;
 
+  const cacheKey = "msgs_"+myId+"_"+(friend.email||friend.id);
+
   const load = async (scrollToBottom=false) => {
     const data = await loadMessages(myId, myEmail, friend.id||"none", friend.email||"");
-    // Only update state if messages actually changed — prevents flicker on polls
     const newJson = JSON.stringify(data.map(m=>m.id));
     const oldJson = JSON.stringify(msgsRef.current.map(m=>m.id));
     if(newJson !== oldJson) {
       msgsRef.current = data;
       setMsgs(data);
+      try{ localStorage.setItem(cacheKey, JSON.stringify(data)); }catch(e){}
       if(scrollToBottom) setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),50);
     }
     if(friend.id && !friend.id.startsWith("pending_")) await markMessagesRead(friend.id, myId);
   };
 
   useEffect(()=>{
+    // Show cached messages instantly while fetching
+    try {
+      const cached = localStorage.getItem(cacheKey);
+      if(cached) {
+        const data = JSON.parse(cached);
+        msgsRef.current = data; setMsgs(data);
+        setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),50);
+      }
+    } catch(e){}
     load(true).then(()=>setHasLoaded(true));
     pollRef.current = setInterval(()=>load(false), 8000);
     return()=>clearInterval(pollRef.current);
@@ -1676,7 +1693,7 @@ function ChatWindow({ myId, myEmail, myUsername, friend, dark, onSaveToChalk, on
           {(friend.username||friend.email)?.[0]?.toUpperCase()}
         </div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{fontWeight:800,fontSize:15,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{friend.username||friend.email}</div>
+          <div style={{fontWeight:800,fontSize:15,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{friend.nickname||friend.username||friend.email}</div>
           <div style={{fontSize:11,color:C.g,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{friend.email}</div>
         </div>
       </div>
@@ -1779,20 +1796,44 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
 
   useEffect(()=>{
     getOrCreateProfile(userId, userEmail).then(p=>{ setProfile(p); setNameVal(p.username||""); });
-    dbLoad(userId,"friends").then(v=>{ if(v) setFriends(v); setLoaded(true); });
     dbLoad(userId,"blocked").then(v=>{ if(v) setBlockedUsers(v); });
-    loadInbox(userEmail).then(async items=>{
+
+    const buildContacts = async () => {
+      // Load saved friends list
+      const savedFriends = await dbLoad(userId,"friends") || [];
+      let contactMap = {};
+      savedFriends.forEach(f=>{ if(f.email) contactMap[f.email]=f; });
+
+      // Auto-add anyone from shared_inbox (they shared with you)
+      const items = await loadInbox(userEmail);
       setSharedItems(items||[]);
-      // Auto-add anyone who has shared with you as a contact
       for(const item of (items||[])) {
-        if(item.from_email && item.from_email !== userEmail) {
+        if(item.from_email && item.from_email!==userEmail && !contactMap[item.from_email]) {
           await autoAddContact(userId, userEmail, item.from_email).catch(()=>{});
+          contactMap[item.from_email] = {id:"pending_"+item.from_email, email:item.from_email, username:item.from_email.split("@")[0]};
         }
       }
-      // Reload friends after auto-add
-      const updated = await dbLoad(userId,"friends");
-      if(updated) setFriends(updated);
-    });
+
+      // Auto-add anyone you have real messages with
+      const { data: msgContacts } = await sb.from("messages")
+        .select("from_id,from_email,to_id")
+        .or(`from_id.eq.${userId},to_id.eq.${userId}`)
+        .limit(100);
+      for(const m of (msgContacts||[])) {
+        const email = m.from_id===userId ? null : m.from_email;
+        if(email && email!==userEmail && !contactMap[email]) {
+          const prof = await sb.from("user_profiles").select("id,email,username").eq("email",email).single().then(r=>r.data);
+          contactMap[email] = {id:prof?.id||"pending_"+email, email, username:prof?.username||email.split("@")[0]};
+        }
+      }
+
+      const allContacts = Object.values(contactMap);
+      setFriends(allContacts);
+      await dbSave(userId,"friends",allContacts);
+      setLoaded(true);
+    };
+
+    buildContacts();
   },[userId, userEmail]);
 
   // Poll unread counts
@@ -1912,11 +1953,12 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
               {unread[f.id]>0&&<div style={{position:"absolute",top:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"#ff3b30",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#fff"}}>{unread[f.id]}</div>}
             </div>
             <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:14,color:txt}}>{f.username||f.email.split("@")[0]}</div>
+              <div style={{fontWeight:700,fontSize:14,color:txt}}>{f.nickname||f.username||f.email.split("@")[0]}</div>
               <div style={{fontSize:11,color:sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.email}</div>
             </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="9 18 15 12 9 6"/></svg>
-            <button onClick={e=>{e.stopPropagation();if(window.confirm("Block "+f.email+"? They cannot message you.")){blockUser(f.email);}}} style={{background:"none",border:"none",cursor:"pointer",color:"#ff3b30",fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 8px"}}>Block</button>
+            <button onClick={e=>{e.stopPropagation(); const nn=window.prompt("Nickname for "+f.email+":",f.nickname||f.username||f.email.split("@")[0]); if(nn!==null){ const updated=friends.map(x=>x.email===f.email?{...x,nickname:nn.trim()||undefined}:x); saveFriends(updated); }}} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 6px"}}>✏</button>
+            <button onClick={e=>{e.stopPropagation();if(window.confirm("Block "+f.email+"? They cannot message you.")){blockUser(f.email);}}} style={{background:"none",border:"none",cursor:"pointer",color:"#ff3b30",fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 6px"}}>Block</button>
           </div>
         ))}
       </div>
