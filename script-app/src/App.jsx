@@ -2227,8 +2227,15 @@ export default function Script() {
   const hashShare=hash.match(/^#share\/(.+)$/);
   if(hashShare) return <SharedCalendarView shareId={hashShare[1]}/>;
 
-  useEffect(()=>{ try{ localStorage.setItem("script_dark",dark?"1":"0"); }catch(e){} },[dark]);
-  useEffect(()=>{ C.r=accent; },[accent]);
+  useEffect(()=>{
+    try{ localStorage.setItem("script_dark",dark?"1":"0"); }catch(e){}
+    if(user) dbSave(user.id,"ui_prefs",{dark,accent}).catch(()=>{});
+  },[dark]);
+  useEffect(()=>{
+    C.r=accent;
+    try{ localStorage.setItem("script_accent",accent); }catch(e){}
+    if(user) dbSave(user.id,"ui_prefs",{dark,accent}).catch(()=>{});
+  },[accent]);
   useEffect(()=>{
     sb.auth.getSession().then(({data})=>{
       if(data?.session?.user) {
@@ -2333,7 +2340,7 @@ export default function Script() {
   const {App}=cur;
 
   return(
-    <div key={accent} style={{display:"flex",flexDirection:"column",height:"100svh",background:D.pageBg,fontFamily:"'Nunito',sans-serif",overflow:"hidden",paddingTop:"env(safe-area-inset-top)"}}>
+    <div style={{display:"flex",flexDirection:"column",height:"100svh",background:D.pageBg,fontFamily:"'Nunito',sans-serif",overflow:"hidden",paddingTop:"env(safe-area-inset-top)"}}>
       <style>{`input,select,textarea{font-size:16px!important;}`}</style>
       {dark&&<style>{`input,select,textarea{background:#2C2C2E !important;color:#F2F2F7 !important;border-color:#3A3A3C !important;}input::placeholder,textarea::placeholder{color:#636366 !important;}`}</style>}
       <div style={{background:D.headerBg,borderBottom:"1.5px solid "+D.border,padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
