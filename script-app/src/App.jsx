@@ -1980,6 +1980,7 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
   const [nameVal, setNameVal] = useState("");
   const [unread, setUnread] = useState({});
   const [sharedItems, setSharedItems] = useState([]);
+  const [swipedId, setSwipedId] = useState(null);
   const [loaded, setLoaded] = useState(false);
   const bg=dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":C.bd, txt=dark?"#F2F2F7":C.k, sub=dark?"#8E8E93":C.g;
 
@@ -2135,7 +2136,7 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
       <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
         {!loaded&&<Spinner msg="Loading..."/>}
         {loaded&&friends.filter(f=>!blockedUsers.includes(f.email)).length===0&&sharedItems.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>Share something with someone to start a conversation!</div>}
-        {friends.filter(f=>!blockedUsers.includes(f.email)).map(f=>{ const [swiped,setSwiped]=useState(false); return(
+        {friends.filter(f=>!blockedUsers.includes(f.email)).map(f=>{ const swiped=swipedId===f.id||swipedId===f.email; const setSwiped=(v)=>setSwipedId(v?(f.id||f.email):null); return(
           <div key={f.id} style={{position:"relative",overflow:"hidden",borderRadius:14,marginBottom:0}}>
             <div style={{position:"absolute",right:0,top:0,bottom:0,width:80,background:"#ff3b30",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"0 14px 14px 0"}}>
               <button onClick={async e=>{ e.stopPropagation(); await dbSave(userId,"friends",friends.filter(x=>x.email!==f.email)); setFriends(friends.filter(x=>x.email!==f.email)); }} style={{background:"none",border:"none",color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer"}}>Delete</button>
@@ -2274,6 +2275,23 @@ function Settings({ user, dark, setDark, onClose }) {
                     <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:dark?25:3,transition:"left .2s"}}/>
                   </button>
                 </div>
+              </div>
+              <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
+                <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>Accent Color</div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:12,marginBottom:8}}>
+                  {ACCENT_COLORS.map(ac=>{
+                    const cur = (()=>{ try{ return localStorage.getItem("script_accent")||"#C8220A"; }catch(e){ return "#C8220A"; } })();
+                    const isCur = cur===ac.hex;
+                    return(
+                      <button key={ac.id} onClick={()=>{ setAccent(ac.hex); window.location.reload(); }}
+                        style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:"none",border:"none",cursor:"pointer",padding:0}}>
+                        <div style={{width:38,height:38,borderRadius:"50%",background:ac.hex,border:isCur?"3px solid "+txt:"3px solid transparent",boxSizing:"border-box",boxShadow:isCur?"0 0 0 2px "+ac.hex:"none"}}/>
+                        <span style={{fontSize:10,color:isCur?txt:sub,fontWeight:isCur?800:500}}>{ac.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <div style={{fontSize:11,color:sub}}>Tap a color to apply. App restarts instantly.</div>
               </div>
               <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
                 <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>App Sections</div>
