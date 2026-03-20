@@ -8,14 +8,18 @@ const sb = createClient(SUPA_URL, SUPA_KEY);
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const WDAYS  = ["Su","Mo","Tu","We","Th","Fr","Sa"];
 const ACCENT_COLORS = [
-  {id:"red",    label:"Red",    hex:"#C8220A"},
-  {id:"blue",   label:"Blue",   hex:"#0A6BC8"},
-  {id:"green",  label:"Green",  hex:"#1B6B35"},
-  {id:"purple", label:"Purple", hex:"#6B3FA0"},
-  {id:"orange", label:"Orange", hex:"#E05A00"},
-  {id:"teal",   label:"Teal",   hex:"#00838F"},
-  {id:"pink",   label:"Pink",   hex:"#B5174A"},
-  {id:"navy",   label:"Navy",   hex:"#2C5F9E"},
+  {id:"red",      label:"Red",      hex:"#C8220A"},
+  {id:"burgundy", label:"Burgundy", hex:"#7B1C2E"},
+  {id:"hotpink",  label:"Hot Pink", hex:"#E0006A"},
+  {id:"blue",     label:"Blue",     hex:"#0A6BC8"},
+  {id:"navy",     label:"Navy",     hex:"#2C5F9E"},
+  {id:"green",    label:"Green",    hex:"#1B6B35"},
+  {id:"teal",     label:"Teal",     hex:"#00838F"},
+  {id:"purple",   label:"Purple",   hex:"#6B3FA0"},
+  {id:"orange",   label:"Orange",   hex:"#E05A00"},
+  {id:"gold",     label:"Gold",     hex:"#B8860B"},
+  {id:"yellow",   label:"Yellow",   hex:"#C8A000"},
+  {id:"pink",     label:"Pink",     hex:"#B5174A"},
 ];
 function getAccent() { try{ return localStorage.getItem("script_accent")||"#C8220A"; }catch(e){ return "#C8220A"; } }
 function setAccent(hex) { try{ localStorage.setItem("script_accent",hex); }catch(e){} }
@@ -1106,6 +1110,40 @@ function Money({ userId }) {
         ))}
       </div>
 
+      {monthTxns.filter(t=>t.type==="Expense").length>0&&(
+        <div style={{background:"#fff",borderRadius:14,border:"1.5px solid "+C.bd,padding:"12px 14px",flexShrink:0}}>
+          <div style={{fontSize:10,color:C.g,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Spending by Category</div>
+          <div style={{display:"flex",flexDirection:"column",gap:5}}>
+            {Object.entries(
+              monthTxns.filter(t=>t.type==="Expense").reduce((acc,t)=>{
+                const cat=CAT_MAP[t.cat]||t.cat||"Other";
+                acc[cat]=(acc[cat]||0)+t.amount; return acc;
+              },{})
+            ).sort((a,b)=>b[1]-a[1]).map(([cat,amt])=>{
+              const total=monthTxns.filter(t=>t.type==="Expense").reduce((s,t)=>s+t.amount,0);
+              const pct=total>0?Math.round(amt/total*100):0;
+              const catObj=MCATS.find(c=>c.id===cat)||MCATS_EXPENSE[MCATS_EXPENSE.length-1];
+              return(
+                <div key={cat} style={{display:"flex",alignItems:"center",gap:8}}>
+                  <div style={{width:24,height:24,borderRadius:7,background:catObj.color||C.r,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    {typeof catObj.icon==="function"?catObj.icon("#fff",12):<span style={{fontSize:8,fontWeight:900,color:"#fff"}}>{cat[0]}</span>}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:2}}>
+                      <span style={{fontSize:11,fontWeight:700,color:C.k}}>{cat}</span>
+                      <span style={{fontSize:11,fontWeight:700,color:C.r}}>${amt.toFixed(0)}</span>
+                    </div>
+                    <div style={{height:4,borderRadius:2,background:"#F0EDE8",overflow:"hidden"}}>
+                      <div style={{height:"100%",width:pct+"%",background:catObj.color||C.r,borderRadius:2}}/>
+                    </div>
+                  </div>
+                  <span style={{fontSize:10,color:C.g,width:28,textAlign:"right"}}>{pct}%</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       {isCurrent&&<button onClick={()=>{setOpen(!open);setExpandId(null);}} style={{...btn(),borderRadius:12,padding:"12px",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexShrink:0}}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Add Transaction
@@ -2048,9 +2086,9 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
   );
 }
 // ── SETTINGS ──
-function Settings({ user, dark, setDark, onClose }) {
+function Settings({ user, dark, setDark, accent, onAccent, onClose }) {
   const [tab,setTab]=useState("account");
-  const [currentAccent,setCurrentAccent]=useState(()=>{ try{ return localStorage.getItem("script_accent")||"#C8220A"; }catch(e){ return "#C8220A"; } });
+
 
 
   useEffect(()=>{
@@ -2126,10 +2164,10 @@ function Settings({ user, dark, setDark, onClose }) {
                   {ACCENT_COLORS.map(ac=>{
 
                     return(
-                      <button key={ac.id} onClick={()=>{ setAccent(ac.hex); setCurrentAccent(ac.hex); C.r=ac.hex; }}
+                      <button key={ac.id} onClick={()=>onAccent(ac.hex)}
                         style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:"none",border:"none",cursor:"pointer",padding:0}}>
-                        <div style={{width:38,height:38,borderRadius:"50%",background:ac.hex,border:currentAccent===ac.hex?"3px solid "+txt:"3px solid transparent",boxSizing:"border-box"}}/>
-                        <span style={{fontSize:10,color:currentAccent===ac.hex?txt:sub,fontWeight:currentAccent===ac.hex?800:500}}>{ac.label}</span>
+                        <div style={{width:38,height:38,borderRadius:"50%",background:ac.hex,border:accent===ac.hex?"3px solid "+txt:"3px solid transparent",boxSizing:"border-box"}}/>
+                        <span style={{fontSize:10,color:accent===ac.hex?txt:sub,fontWeight:accent===ac.hex?800:500}}>{ac.label}</span>
                       </button>
                     );
                   })}
@@ -2178,6 +2216,8 @@ export default function Script() {
   const [msgUnread,setMsgUnread]=useState(0);
   const [showSett,setShowSett]=useState(false);
   const [dark,setDark]=useState(()=>{ try{ return localStorage.getItem("script_dark")==="1"; }catch(e){ return false; } });
+  const [accent,setAccentState]=useState(()=>{ try{ return localStorage.getItem("script_accent")||"#C8220A"; }catch(e){ return "#C8220A"; } });
+  const changeAccent=(hex)=>{ setAccentState(hex); C.r=hex; try{ localStorage.setItem("script_accent",hex); }catch(e){} };
   const [booting,setBooting]=useState(true);
   const [inbox,setInbox]=useState([]);
   const [showInbox,setShowInbox]=useState(false);
@@ -2188,6 +2228,7 @@ export default function Script() {
   if(hashShare) return <SharedCalendarView shareId={hashShare[1]}/>;
 
   useEffect(()=>{ try{ localStorage.setItem("script_dark",dark?"1":"0"); }catch(e){} },[dark]);
+  useEffect(()=>{ C.r=accent; },[accent]);
   useEffect(()=>{
     sb.auth.getSession().then(({data})=>{
       if(data?.session?.user) {
@@ -2292,7 +2333,7 @@ export default function Script() {
   const {App}=cur;
 
   return(
-    <div style={{display:"flex",flexDirection:"column",height:"100svh",background:D.pageBg,fontFamily:"'Nunito',sans-serif",overflow:"hidden",paddingTop:"env(safe-area-inset-top)"}}>
+    <div key={accent} style={{display:"flex",flexDirection:"column",height:"100svh",background:D.pageBg,fontFamily:"'Nunito',sans-serif",overflow:"hidden",paddingTop:"env(safe-area-inset-top)"}}>
       <style>{`input,select,textarea{font-size:16px!important;}`}</style>
       {dark&&<style>{`input,select,textarea{background:#2C2C2E !important;color:#F2F2F7 !important;border-color:#3A3A3C !important;}input::placeholder,textarea::placeholder{color:#636366 !important;}`}</style>}
       <div style={{background:D.headerBg,borderBottom:"1.5px solid "+D.border,padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
@@ -2357,7 +2398,7 @@ export default function Script() {
         </div>
       )}
       {showInbox&&<InboxModal items={inbox} onAccept={acceptShared} onDismiss={async(id)=>{ const item=inbox.find(x=>x.id===id); if(item?.type!=="shared_chat") await deleteInboxItem(id); setInbox(prev=>prev.filter(x=>x.id!==id)); }} onClose={()=>setShowInbox(false)}/>}
-      {showSett&&<Settings user={user} dark={dark} setDark={setDark} onClose={()=>setShowSett(false)}/>}
+      {showSett&&<Settings user={user} dark={dark} setDark={setDark} accent={accent} onAccent={changeAccent} onClose={()=>setShowSett(false)}/>}
     </div>
   );
 }
