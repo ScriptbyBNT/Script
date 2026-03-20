@@ -1092,6 +1092,7 @@ function Calendar({ userId, userEmail }) {
                   <div style={{fontSize:12,color:C.g,marginBottom:6,fontWeight:700}}>Alert time</div>
                   <input type="datetime-local" value={reminderTime} onChange={e=>setReminderTime(e.target.value)}
                     style={{...inp,fontSize:16}} min={new Date().toISOString().slice(0,16)}/>
+                  <div style={{fontSize:11,color:"#0277BD",background:"#EBF5FB",borderRadius:8,padding:"8px 10px",marginTop:6}}>⏰ Set your reminder for the day before — web notifications fire once daily at midnight.</div>
                 </div>
                 <div style={{display:"flex",gap:8}}>
                   <button onClick={async()=>{
@@ -1409,6 +1410,7 @@ function Health({ userId }) {
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
             {tab==="docs"&&<><HealthFI k="name" pl="Doctor Name" form={form} setForm={setForm}/><HealthFI k="specialty" pl="Specialty" form={form} setForm={setForm}/><HealthFI k="phone" pl="Phone" form={form} setForm={setForm}/><HealthFI k="address" pl="Address" form={form} setForm={setForm}/><HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/></>}
             {tab==="apts"&&<>
+                  <div style={{fontSize:11,color:"#0277BD",background:"#EBF5FB",borderRadius:8,padding:"8px 10px",marginTop:6}}>⏰ Set your reminder for the day before — web notifications fire once daily at midnight.</div>
                   <HealthFI k="title" pl="Appointment" form={form} setForm={setForm}/>
                   <HealthFI k="doctor" pl="Doctor" form={form} setForm={setForm}/>
                   <div style={{gridColumn:"span 2"}}>
@@ -1423,6 +1425,7 @@ function Health({ userId }) {
                   </div>
                 </>}
             {tab==="meds"&&<>
+                  <div style={{fontSize:11,color:"#0277BD",background:"#EBF5FB",borderRadius:8,padding:"8px 10px",marginTop:6}}>⏰ Set your reminder for the day before — web notifications fire once daily at midnight.</div>
                   <HealthFI k="name" pl="Medication" form={form} setForm={setForm}/>
                   <HealthFI k="dosage" pl="Dosage" form={form} setForm={setForm}/>
                   <HealthFI k="frequency" pl="Frequency" form={form} setForm={setForm}/>
