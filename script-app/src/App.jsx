@@ -7,7 +7,19 @@ const sb = createClient(SUPA_URL, SUPA_KEY);
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const WDAYS  = ["Su","Mo","Tu","We","Th","Fr","Sa"];
-const C = { r:"#C8220A", g:"#7A7A7A", k:"#1C1C1E", rl:"#FFF3F1", rm:"#FFCCC4", bd:"#E8D5D0" };
+const ACCENT_COLORS = [
+  {id:"red",    label:"Red",    hex:"#C8220A"},
+  {id:"blue",   label:"Blue",   hex:"#0A6BC8"},
+  {id:"green",  label:"Green",  hex:"#1B6B35"},
+  {id:"purple", label:"Purple", hex:"#6B3FA0"},
+  {id:"orange", label:"Orange", hex:"#E05A00"},
+  {id:"teal",   label:"Teal",   hex:"#00838F"},
+  {id:"pink",   label:"Pink",   hex:"#B5174A"},
+  {id:"navy",   label:"Navy",   hex:"#2C5F9E"},
+];
+function getAccent() { try{ return localStorage.getItem("script_accent")||"#C8220A"; }catch(e){ return "#C8220A"; } }
+function setAccent(hex) { try{ localStorage.setItem("script_accent",hex); }catch(e){} }
+const C = { r:getAccent(), g:"#7A7A7A", k:"#1C1C1E", rl:"#FFF3F1", rm:"#FFCCC4", bd:"#E8D5D0" };
 
 // ── SVG ICONS ──
 const SvgFood        = ({color="#fff",size=18}) => <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>;
@@ -245,7 +257,7 @@ async function cancelScheduledNotif(userId, type, refText) {
 
 // ── LOGIN ──
 // ── SHARE MODAL ──
-function ShareModal({ title, onSend, onClose, userId }) {
+function ShareModal({ title, onSend, onClose, userId, friends=[] }) {
   const [email, setEmail] = useState("");
   const [state, setState] = useState("idle");
   const [errMsg, setErrMsg] = useState("");
@@ -264,8 +276,15 @@ function ShareModal({ title, onSend, onClose, userId }) {
     if(userId) await dbSave(userId, "share_recents", updated).catch(()=>{});
   };
 
+  const resolveAddr = (input) => {
+    const v = input.trim().toLowerCase();
+    // Check if input matches a nickname — resolve to email
+    const byNick = friends.find(f => f.nickname && f.nickname.trim().toLowerCase()===v);
+    if(byNick) return byNick.email;
+    return v;
+  };
   const send = async (toEmail) => {
-    const addr = (toEmail||email).trim().toLowerCase();
+    const addr = resolveAddr(toEmail||email);
     if (!addr) return;
     setState("sending");
     const err = await onSend(addr);
@@ -294,7 +313,7 @@ function ShareModal({ title, onSend, onClose, userId }) {
             <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
               {recents.map(r=>(
                 <button key={r} onClick={()=>send(r)} style={{padding:"6px 12px",borderRadius:20,border:"1.5px solid #E8D5D0",background:"#fff",color:C.k,fontSize:12,fontWeight:600,cursor:"pointer",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {r}
+                  {(()=>{const f=friends.find(x=>x.email===r); return f?.nickname||f?.username||r;})()}
                 </button>
               ))}
             </div>
@@ -305,7 +324,7 @@ function ShareModal({ title, onSend, onClose, userId }) {
           value={email}
           onChange={e=>setEmail(e.target.value)}
           onKeyDown={e=>e.key==="Enter"&&send()}
-          placeholder="their@email.com"
+          placeholder="email or nickname"
           style={{...inp,marginBottom:12}}
           autoFocus
         />
@@ -598,7 +617,7 @@ function Chalk({ userId, dark, userEmail }) {
             style={{position:"absolute",inset:0,width:"100%",height:"100%",cursor:"crosshair",touchAction:"none",background:dark?"#1C2C1C":"#6b8c52"}}
           />
         )}
-        {showShare&&<ShareModal title={mode==="draw"?"My Drawing":"My Notes"} userId={userId} onClose={()=>setShowShare(false)} onSend={async(toEmail)=>sendShared(userEmail,toEmail,"note",mode==="draw"?"Chalk Drawing":"Chalk Notes",mode==="draw"?{text,paths}:text)}/>}
+        {showShare&&<ShareModal title={mode==="draw"?"My Drawing":"My Notes"} userId={userId} friends={[]} onClose={()=>setShowShare(false)} onSend={async(toEmail)=>sendShared(userEmail,toEmail,"note",mode==="draw"?"Chalk Drawing":"Chalk Notes",mode==="draw"?{text,paths}:text)}/>}
         <button onClick={()=>setShowShare(true)} style={{position:"absolute",bottom:16,left:16,background:"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:24,padding:"10px 16px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",backdropFilter:"blur(4px)"}}>⬆ Share</button>
         {mode==="type"&&(
           <button onClick={listening?stopListening:startListening} style={{position:"absolute",bottom:16,left:"50%",transform:"translateX(-50%)",background:listening?"rgba(200,34,10,.85)":"rgba(0,0,0,.35)",border:"1.5px solid rgba(255,255,255,.25)",borderRadius:24,padding:"10px 16px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",backdropFilter:"blur(4px)",display:"flex",alignItems:"center",gap:6,whiteSpace:"nowrap"}}>
@@ -729,7 +748,7 @@ function Lists({ userId, userEmail }) {
         <button onClick={()=>setShowN(!showN)} style={{padding:"6px 12px",borderRadius:20,border:"1.5px dashed #E8D5D0",background:"#fff",color:C.g,fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>+ New</button>
         <button onClick={()=>setShowShare(true)} style={{padding:"6px 12px",borderRadius:20,border:"none",background:C.r,color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>⬆ Share</button>
       </div>
-      {showShare&&<ShareModal title={al?.label||"List"} userId={userId} onClose={()=>setShowShare(false)} onSend={async(toEmail)=>{ const al2=listsRef.current.find(l=>l.id===active)||listsRef.current[0]; return await sendShared(userEmail,toEmail,"list",al2.label,al2.items); }}/>}
+      {showShare&&<ShareModal title={al?.label||"List"} userId={userId} friends={[]} onClose={()=>setShowShare(false)} onSend={async(toEmail)=>{ const al2=listsRef.current.find(l=>l.id===active)||listsRef.current[0]; return await sendShared(userEmail,toEmail,"list",al2.label,al2.items); }}/>}
       {showN&&(
         <div style={box}>
           <div style={{display:"flex",gap:8}}>
@@ -782,6 +801,44 @@ function Lists({ userId, userEmail }) {
 }
 
 // ── CALENDAR ──
+
+function CalendarReminders({ userId, dayKey }) {
+  const [reminders, setReminders] = useState([]);
+  useEffect(()=>{
+    if(!dayKey||!userId) return;
+    sb.from("scheduled_notifications")
+      .select("*").eq("user_id",userId).eq("type","appointment")
+      .then(({data})=>{
+        // Find reminders whose body references a date matching this day key
+        const [y,m,d] = dayKey.split("-").map(Number);
+        const dayDate = new Date(y,m-1,d);
+        const dayStart = new Date(dayDate); dayStart.setHours(0,0,0,0);
+        const dayEnd   = new Date(dayDate); dayEnd.setHours(23,59,59,999);
+        const matching = (data||[]).filter(r=>{
+          const t = new Date(r.send_at);
+          return t>=dayStart && t<=dayEnd;
+        });
+        setReminders(matching);
+      });
+  },[userId,dayKey]);
+
+  if(!reminders.length) return null;
+  return(
+    <div style={{flexShrink:0}}>
+      {reminders.map(r=>(
+        <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#EBF5FB",borderRadius:10,border:"1.5px solid #B3D7F0",marginBottom:6}}>
+          <span style={{fontSize:14}}>🔔</span>
+          <div style={{flex:1}}>
+            <div style={{fontSize:12,fontWeight:700,color:"#0277BD"}}>{new Date(r.send_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+            <div style={{fontSize:11,color:"#555"}}>{r.body}</div>
+          </div>
+          <button onClick={async()=>{ await sb.from("scheduled_notifications").delete().eq("id",r.id); setReminders(prev=>prev.filter(x=>x.id!==r.id)); }} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:14}}>×</button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function CalendarNote({ selKey, evtsRef, userId, onUpdate }) {
   const [val,setVal]=useState(()=>evtsRef.current[selKey]||"");
   const saveTimer=useRef(null);
@@ -1013,7 +1070,7 @@ function Calendar({ userId, userEmail }) {
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
         Share Calendar
       </button>
-      {showShareModal&&<ShareModal title="My Calendar" userId={userId} onClose={()=>setShowShareModal(false)} onSend={async(toEmail)=>{ return await sendShared(userEmail,toEmail,"calendar","Calendar",evtsRef.current); }}/>}
+      {showShareModal&&<ShareModal title="My Calendar" userId={userId} friends={[]} onClose={()=>setShowShareModal(false)} onSend={async(toEmail)=>{ return await sendShared(userEmail,toEmail,"calendar","Calendar",evtsRef.current); }}/>}
       {selKey?(
         <div style={{display:"flex",flexDirection:"column",gap:8,minHeight:240}}>
           <div style={{background:C.r,borderRadius:10,padding:"6px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
@@ -1025,7 +1082,7 @@ function Calendar({ userId, userEmail }) {
               Share Day
             </button>
           </div>
-          {showShareDayModal&&<ShareModal title={(selMonth!=null?MONTHS[selMonth-1]+" ":"")+selDay} userId={userId} onClose={()=>setShowShareDayModal(false)} onSend={async(toEmail)=>{ return await sendShared(userEmail,toEmail,"calendar_day",(selMonth!=null?MONTHS[selMonth-1]+" ":"")+selDay,{[selKey]:evtsRef.current[selKey]||""}); }}/>}
+          {showShareDayModal&&<ShareModal title={(selMonth!=null?MONTHS[selMonth-1]+" ":"")+selDay} userId={userId} friends={[]} onClose={()=>setShowShareDayModal(false)} onSend={async(toEmail)=>{ return await sendShared(userEmail,toEmail,"calendar_day",(selMonth!=null?MONTHS[selMonth-1]+" ":"")+selDay,{[selKey]:evtsRef.current[selKey]||""}); }}/>}
           {showReminderModal&&(
             <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:600,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowReminderModal(false)}>
               <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",padding:"20px 20px 40px"}}>
@@ -1055,6 +1112,7 @@ function Calendar({ userId, userEmail }) {
             </div>
           )}
           <CalendarNote key={selKey} selKey={selKey} evtsRef={evtsRef} userId={userId} onUpdate={updated=>setEvts({...updated})}/>
+          <CalendarReminders userId={userId} dayKey={selKey}/>
         </div>
       ):(
         <div style={{textAlign:"center",color:C.g,padding:24,fontSize:14}}>Tap a day to add notes</div>
@@ -1302,8 +1360,40 @@ function Health({ userId }) {
   const Sa=async d=>{setApts(d);await dbSave(userId,"apts",d);};
   const Sm=async d=>{setMeds(d);await dbSave(userId,"meds",d);};
   const addDoc=()=>{ if(!form.name) return; Sd([...docs,{id:Date.now(),...form,imgs:[]}]); setForm({}); setOpen(false); };
-  const addApt=()=>{ if(!form.title) return; Sa([{id:Date.now(),...form,date:form.date||new Date().toLocaleDateString()},...apts]); setForm({}); setOpen(false); };
-  const addMed=()=>{ if(!form.name) return; Sm([...meds,{id:Date.now(),...form,imgs:[]}]); setForm({}); setOpen(false); };
+  const addApt=async()=>{
+    if(!form.title) return;
+    const id=Date.now();
+    const apt={id,...form,date:form.date||new Date().toLocaleDateString()};
+    Sa([apt,...apts]);
+    // Auto-add to calendar
+    if(form.datetime){
+      const calKey=new Date(form.datetime).getFullYear()+"-"+(new Date(form.datetime).getMonth()+1)+"-"+new Date(form.datetime).getDate();
+      const cal=await dbLoad(userId,"cal")||{};
+      const timeStr=new Date(form.datetime).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});
+      cal[calKey]=(cal[calKey]?cal[calKey]+"\n":"")+timeStr+" — "+form.title+(form.doctor?" with "+form.doctor:"");
+      await dbSave(userId,"cal",cal);
+    }
+    // Schedule reminder
+    if(form.reminder_time){
+      await scheduleNotification(userId,"appointment","Appointment Reminder",
+        (form.title)+(form.doctor?" with "+form.doctor:"")+(form.datetime?" at "+new Date(form.datetime).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""),
+        new Date(form.reminder_time)
+      );
+    }
+    setForm({}); setOpen(false);
+  };
+  const addMed=async()=>{
+    if(!form.name) return;
+    const id=Date.now();
+    Sm([...meds,{id,...form,imgs:[]}]);
+    if(form.reminder_time){
+      await scheduleNotification(userId,"medication","Medication Reminder",
+        "Time to take "+form.name+(form.dosage?" — "+form.dosage:""),
+        new Date(form.reminder_time)
+      );
+    }
+    setForm({}); setOpen(false);
+  };
 
   if(!loaded) return <Spinner msg="Loading health data..."/>;
   return(
@@ -1318,8 +1408,31 @@ function Health({ userId }) {
         <div style={box}>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
             {tab==="docs"&&<><HealthFI k="name" pl="Doctor Name" form={form} setForm={setForm}/><HealthFI k="specialty" pl="Specialty" form={form} setForm={setForm}/><HealthFI k="phone" pl="Phone" form={form} setForm={setForm}/><HealthFI k="address" pl="Address" form={form} setForm={setForm}/><HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/></>}
-            {tab==="apts"&&<><HealthFI k="title" pl="Appointment" form={form} setForm={setForm}/><HealthFI k="doctor" pl="Doctor" form={form} setForm={setForm}/><HealthFI k="date" pl="Date" form={form} setForm={setForm}/><HealthFI k="location" pl="Location" form={form} setForm={setForm}/><HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/></>}
-            {tab==="meds"&&<><HealthFI k="name" pl="Medication" form={form} setForm={setForm}/><HealthFI k="dosage" pl="Dosage" form={form} setForm={setForm}/><HealthFI k="frequency" pl="Frequency" form={form} setForm={setForm}/><HealthFI k="prescriber" pl="Prescriber" form={form} setForm={setForm}/><HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/></>}
+            {tab==="apts"&&<>
+                  <HealthFI k="title" pl="Appointment" form={form} setForm={setForm}/>
+                  <HealthFI k="doctor" pl="Doctor" form={form} setForm={setForm}/>
+                  <div style={{gridColumn:"span 2"}}>
+                    <div style={{fontSize:11,color:C.g,marginBottom:4,fontWeight:700}}>Date &amp; Time</div>
+                    <input type="datetime-local" style={{...inp,fontSize:16}} value={form.datetime||""} onChange={e=>setForm(f=>({...f,datetime:e.target.value,date:new Date(e.target.value).toLocaleDateString()}))}/>
+                  </div>
+                  <HealthFI k="location" pl="Location" form={form} setForm={setForm}/>
+                  <HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/>
+                  <div style={{gridColumn:"span 2"}}>
+                    <div style={{fontSize:11,color:C.g,marginBottom:4,fontWeight:700}}>🔔 Set reminder</div>
+                    <input type="datetime-local" style={{...inp,fontSize:16}} value={form.reminder_time||""} onChange={e=>setForm(f=>({...f,reminder_time:e.target.value}))} min={new Date().toISOString().slice(0,16)}/>
+                  </div>
+                </>}
+            {tab==="meds"&&<>
+                  <HealthFI k="name" pl="Medication" form={form} setForm={setForm}/>
+                  <HealthFI k="dosage" pl="Dosage" form={form} setForm={setForm}/>
+                  <HealthFI k="frequency" pl="Frequency" form={form} setForm={setForm}/>
+                  <HealthFI k="prescriber" pl="Prescriber" form={form} setForm={setForm}/>
+                  <HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/>
+                  <div style={{gridColumn:"span 2"}}>
+                    <div style={{fontSize:11,color:C.g,marginBottom:4,fontWeight:700}}>🔔 Set reminder</div>
+                    <input type="datetime-local" style={{...inp,fontSize:16}} value={form.reminder_time||""} onChange={e=>setForm(f=>({...f,reminder_time:e.target.value}))} min={new Date().toISOString().slice(0,16)}/>
+                  </div>
+                </>}
           </div>
           <div style={{display:"flex",gap:8}}>
             <button onClick={tab==="docs"?addDoc:tab==="apts"?addApt:addMed} style={{...btn(),flex:1}}>Save</button>
@@ -2019,8 +2132,15 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
       <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
         {!loaded&&<Spinner msg="Loading..."/>}
         {loaded&&friends.filter(f=>!blockedUsers.includes(f.email)).length===0&&sharedItems.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>Share something with someone to start a conversation!</div>}
-        {friends.filter(f=>!blockedUsers.includes(f.email)).map(f=>(
-          <div key={f.id} onClick={()=>setActiveFriend({...f, email: f.email||""})} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+        {friends.filter(f=>!blockedUsers.includes(f.email)).map(f=>{ const [swiped,setSwiped]=useState(false); return(
+          <div key={f.id} style={{position:"relative",overflow:"hidden",borderRadius:14,marginBottom:0}}>
+            <div style={{position:"absolute",right:0,top:0,bottom:0,width:80,background:"#ff3b30",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"0 14px 14px 0"}}>
+              <button onClick={async e=>{ e.stopPropagation(); await dbSave(userId,"friends",friends.filter(x=>x.email!==f.email)); setFriends(friends.filter(x=>x.email!==f.email)); }} style={{background:"none",border:"none",color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer"}}>Delete</button>
+            </div>
+            <div onClick={()=>{ if(swiped){setSwiped(false);return;} setActiveFriend({...f, email: f.email||""}); }}
+              onTouchStart={e=>{ const sx=e.touches[0].clientX; e._sx=sx; }}
+              onTouchEnd={e=>{ const dx=(e.changedTouches[0].clientX)-(e.currentTarget._sx||e.changedTouches[0].clientX); if(dx<-40) setSwiped(true); else if(dx>20) setSwiped(false); }}
+              style={{transform:swiped?"translateX(-80px)":"translateX(0)",transition:"transform .2s",background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
             <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0,position:"relative"}}>
               {(f.username||f.email)?.[0]?.toUpperCase()}
               {unread[f.id]>0&&<div style={{position:"absolute",top:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"#ff3b30",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#fff"}}>{unread[f.id]}</div>}
@@ -2030,10 +2150,21 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
               <div style={{fontSize:11,color:sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.email}</div>
             </div>
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="9 18 15 12 9 6"/></svg>
-            <button onClick={e=>{e.stopPropagation(); const nn=window.prompt("Nickname for "+f.email+":",f.nickname||f.username||f.email.split("@")[0]); if(nn!==null){ const updated=friends.map(x=>x.email===f.email?{...x,nickname:nn.trim()||undefined}:x); saveFriends(updated); }}} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 6px"}}>✏</button>
+            <button onClick={e=>{e.stopPropagation(); const nn=window.prompt("Nickname for "+f.email+":",f.nickname||f.username||f.email.split("@")[0]); if(nn!==null){
+              const trimmed = nn.trim();
+              if(trimmed) {
+                // Check uniqueness
+                const conflict = friends.find(x=>x.email!==f.email && x.nickname && x.nickname.trim().toLowerCase()===trimmed.toLowerCase());
+                if(conflict){ alert("Nickname already used for "+conflict.email+". Choose a different one."); }
+                else { const updated=friends.map(x=>x.email===f.email?{...x,nickname:trimmed}:x); saveFriends(updated); }
+              } else {
+                const updated=friends.map(x=>x.email===f.email?{...x,nickname:undefined}:x); saveFriends(updated);
+              }
+            }}} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 6px"}}>✏</button>
             <button onClick={e=>{e.stopPropagation();if(window.confirm("Block "+f.email+"? They cannot message you.")){blockUser(f.email);}}} style={{background:"none",border:"none",cursor:"pointer",color:"#ff3b30",fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 6px"}}>Block</button>
+            </div>
           </div>
-        ))}
+        );})}
       </div>
     </div>
   );
@@ -2165,6 +2296,7 @@ function Settings({ user, dark, setDark, onClose }) {
               </div>
               {pushError&&<div style={{fontSize:12,color:"#ff3b30",background:"rgba(255,59,48,.08)",borderRadius:8,padding:"10px 12px"}}>{pushError}</div>}
               {!pushEnabled&&!pushError&&<div style={{fontSize:11,color:sub,background:bg,borderRadius:8,padding:"8px 10px"}}>Tap the toggle, then tap Allow when your browser asks.</div>}
+              <div style={{fontSize:11,color:sub,background:bg,borderRadius:8,padding:"8px 10px",marginTop:4}}>⚠️ Web notifications only work when Script is saved to your home screen. In Safari: tap Share → Add to Home Screen.</div>
             </div>
             {pushEnabled&&<>
             <div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
