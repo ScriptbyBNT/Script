@@ -240,19 +240,7 @@ async function loadNotifSettings(userId) {
   return v || { messages:true, shared_items:true, appointments:true, medications:true, enabled:false };
 }
 
-async function scheduleNotification(userId, type, title, body, sendAt) {
-  await sb.from("scheduled_notifications").insert({
-    user_id: userId, type, title, body,
-    send_at: sendAt instanceof Date ? sendAt.toISOString() : sendAt,
-    sent: false
-  });
-}
 
-async function cancelScheduledNotif(userId, type, refText) {
-  await sb.from("scheduled_notifications")
-    .delete().eq("user_id", userId).eq("type", type).eq("sent", false)
-    .ilike("body", "%"+refText+"%");
-}
 
 
 // ── LOGIN ──
@@ -802,43 +790,6 @@ function Lists({ userId, userEmail }) {
 
 // ── CALENDAR ──
 
-function CalendarReminders({ userId, dayKey }) {
-  const [reminders, setReminders] = useState([]);
-  useEffect(()=>{
-    if(!dayKey||!userId) return;
-    sb.from("scheduled_notifications")
-      .select("*").eq("user_id",userId).eq("type","appointment")
-      .then(({data})=>{
-        // Find reminders whose body references a date matching this day key
-        const [y,m,d] = dayKey.split("-").map(Number);
-        const dayDate = new Date(y,m-1,d);
-        const dayStart = new Date(dayDate); dayStart.setHours(0,0,0,0);
-        const dayEnd   = new Date(dayDate); dayEnd.setHours(23,59,59,999);
-        const matching = (data||[]).filter(r=>{
-          const t = new Date(r.send_at);
-          return t>=dayStart && t<=dayEnd;
-        });
-        setReminders(matching);
-      });
-  },[userId,dayKey]);
-
-  if(!reminders.length) return null;
-  return(
-    <div style={{flexShrink:0}}>
-      {reminders.map(r=>(
-        <div key={r.id} style={{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",background:"#EBF5FB",borderRadius:10,border:"1.5px solid #B3D7F0",marginBottom:6}}>
-          <span style={{fontSize:14}}>🔔</span>
-          <div style={{flex:1}}>
-            <div style={{fontSize:12,fontWeight:700,color:"#0277BD"}}>{new Date(r.send_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
-            <div style={{fontSize:11,color:"#555"}}>{r.body}</div>
-          </div>
-          <button onClick={async()=>{ await sb.from("scheduled_notifications").delete().eq("id",r.id); setReminders(prev=>prev.filter(x=>x.id!==r.id)); }} style={{background:"none",border:"none",cursor:"pointer",color:"#ccc",fontSize:14}}>×</button>
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function CalendarNote({ selKey, evtsRef, userId, onUpdate }) {
   const [val,setVal]=useState(()=>evtsRef.current[selKey]||"");
   const saveTimer=useRef(null);
@@ -1017,9 +968,6 @@ function Calendar({ userId, userEmail }) {
   const [loaded,setLoaded]=useState(false);
   const [showShareModal,setShowShareModal]=useState(false);
   const [showShareDayModal,setShowShareDayModal]=useState(false);
-  const [showReminderModal,setShowReminderModal]=useState(false);
-  const [reminderTime,setReminderTime]=useState("");
-  const [reminderSaving,setReminderSaving]=useState(false);
   const now=new Date();
 
   useEffect(()=>{
@@ -1033,18 +981,17 @@ function Calendar({ userId, userEmail }) {
   const selParts=selKey?selKey.split("-").map(Number):null;
   const selMonth=selParts?.[1], selDay=selParts?.[2];
 
-
   if(!loaded) return <Spinner msg="Loading calendar..."/>;
   return(
     <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:12,minHeight:0}}>
       <div style={{background:"#fff",borderRadius:14,border:"1.5px solid "+C.bd,overflow:"hidden",flexShrink:0}}>
-        <div style={{background:"linear-gradient(135deg,#C8220A,#E03010)",padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <button onClick={()=>{setSelKey(null);setCal(new Date(y,m-1,1));}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>‹</button>
+        <div style={{background:"linear-gradient(135deg,"+C.r+","+C.r+"dd)",padding:"14px 18px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+          <button onClick={()=>{setSelKey(null);setCal(new Date(y,m-1,1));}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"6px 12px",color:"#fff",cursor:"pointer",fontSize:18,fontWeight:700}}>‹</button>
           <div style={{textAlign:"center"}}>
             <div style={{fontFamily:"'Nunito',sans-serif",color:"#fff",fontWeight:900,fontSize:18}}>{MONTHS[m]}</div>
             <div style={{color:"rgba(255,255,255,.6)",fontSize:12}}>{y}</div>
           </div>
-          <button onClick={()=>{setSelKey(null);setCal(new Date(y,m+1,1));}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,width:32,height:32,cursor:"pointer",color:"#fff",fontSize:18,display:"flex",alignItems:"center",justifyContent:"center"}}>›</button>
+          <button onClick={()=>{setSelKey(null);setCal(new Date(y,m+1,1));}} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"6px 12px",color:"#fff",cursor:"pointer",fontSize:18,fontWeight:700}}>›</button>
         </div>
         <div style={{padding:"12px 14px"}}>
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",marginBottom:6}}>
@@ -1076,44 +1023,13 @@ function Calendar({ userId, userEmail }) {
           <div style={{background:C.r,borderRadius:10,padding:"6px 14px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
             <div style={{fontFamily:"'Nunito',sans-serif",fontSize:20,fontWeight:900,color:"#fff"}}>{selDay}</div>
             <div style={{color:"rgba(255,255,255,.7)",fontSize:12,fontWeight:700}}>{selMonth!=null?MONTHS[selMonth-1]+" "+selKey.split("-")[0]:""}</div>
-            <button onClick={()=>setShowReminderModal(true)} style={{background:"rgba(255,255,255,.15)",border:"none",borderRadius:8,padding:"4px 8px",color:"#fff",fontSize:13,cursor:"pointer"}}>🔔</button>
             <button onClick={()=>setShowShareDayModal(true)} style={{marginLeft:"auto",background:"rgba(255,255,255,.2)",border:"none",borderRadius:8,padding:"4px 10px",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",gap:5}}>
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
               Share Day
             </button>
           </div>
           {showShareDayModal&&<ShareModal title={(selMonth!=null?MONTHS[selMonth-1]+" ":"")+selDay} userId={userId} friends={[]} onClose={()=>setShowShareDayModal(false)} onSend={async(toEmail)=>{ return await sendShared(userEmail,toEmail,"calendar_day",(selMonth!=null?MONTHS[selMonth-1]+" ":"")+selDay,{[selKey]:evtsRef.current[selKey]||""}); }}/>}
-          {showReminderModal&&(
-            <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:600,display:"flex",alignItems:"flex-end"}} onClick={()=>setShowReminderModal(false)}>
-              <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:"22px 22px 0 0",width:"100%",padding:"20px 20px 40px"}}>
-                <div style={{fontWeight:900,fontSize:17,color:C.k,marginBottom:4}}>Set Reminder</div>
-                <div style={{fontSize:13,color:C.g,marginBottom:16}}>{selMonth!=null?MONTHS[selMonth-1]:""} {selDay}</div>
-                <div style={{marginBottom:16}}>
-                  <div style={{fontSize:12,color:C.g,marginBottom:6,fontWeight:700}}>Alert time</div>
-                  <input type="datetime-local" value={reminderTime} onChange={e=>setReminderTime(e.target.value)}
-                    style={{...inp,fontSize:16}} min={new Date().toISOString().slice(0,16)}/>
-                  <div style={{fontSize:11,color:"#0277BD",background:"#EBF5FB",borderRadius:8,padding:"8px 10px",marginTop:6}}>⏰ Set your reminder for the day before — web notifications fire once daily at midnight.</div>
-                </div>
-                <div style={{display:"flex",gap:8}}>
-                  <button onClick={async()=>{
-                    if(!reminderTime) return;
-                    setReminderSaving(true);
-                    const note = evtsRef.current[selKey]||"No notes";
-                    await scheduleNotification(userId,"calendar","Calendar Reminder",
-                      (selMonth!=null?MONTHS[selMonth-1]:"")+" "+selDay+": "+note.slice(0,80),
-                      new Date(reminderTime)
-                    );
-                    setReminderSaving(false); setShowReminderModal(false); setReminderTime("");
-                  }} disabled={!reminderTime||reminderSaving} style={{...btn(C.r),flex:1}}>
-                    {reminderSaving?"Saving...":"Set Reminder"}
-                  </button>
-                  <button onClick={()=>setShowReminderModal(false)} style={{...btn("#fff",C.k),border:"1.5px solid #E8D5D0",flex:1}}>Cancel</button>
-                </div>
-              </div>
-            </div>
-          )}
           <CalendarNote key={selKey} selKey={selKey} evtsRef={evtsRef} userId={userId} onUpdate={updated=>setEvts({...updated})}/>
-          <CalendarReminders userId={userId} dayKey={selKey}/>
         </div>
       ):(
         <div style={{textAlign:"center",color:C.g,padding:24,fontSize:14}}>Tap a day to add notes</div>
@@ -1129,7 +1045,7 @@ function Money({ userId }) {
   const monthLabel=key=>{ const [y,m]=key.split("_"); return MONTHS[parseInt(m)-1]+" "+y; };
   const curKey=now.getFullYear()+"_"+(now.getMonth()+1);
   const [txns,setTxns]=useState([]);
-  const [form,setForm]=useState({desc:"",amount:"",type:"Expense",cat:"Food",imgs:[]});
+  const [form,setForm]=useState({desc:"",amount:"",type:"Expense",cat:MCATS_EXPENSE[0].id,imgs:[]});
   const [open,setOpen]=useState(false);
   const [expandId,setExpandId]=useState(null);
   const [editId,setEditId]=useState(null);
@@ -1157,7 +1073,6 @@ function Money({ userId }) {
   };
   const removeImg=(txnId,imgId)=>S(txns.map(t=>t.id===txnId?{...t,imgs:(t.imgs||[]).filter(i=>i.id!==imgId)}:t));
 
-  const GRN="#1a7a3c";
   const allTxns=txns.map(t=>({...t,monthKey:t.monthKey||toMonthKey(t.date)||curKey}));
   const allKeys=[...new Set([curKey,...allTxns.map(t=>t.monthKey)])].sort((a,b)=>{
     const [ay,am]=a.split("_"),[by,bm]=b.split("_");
@@ -1169,8 +1084,7 @@ function Money({ userId }) {
   const inc=monthTxns.filter(t=>t.type==="Income").reduce((s,t)=>s+t.amount,0);
   const exp=monthTxns.filter(t=>t.type==="Expense").reduce((s,t)=>s+t.amount,0);
   const isCurrent=safeKey===curKey;
-
-  const CAT_MAP={"Grocery":"Food","grocery":"Food","food":"Food","Store":"Store","store":"Store","Electronics":"Electronics","electronics":"Electronics","Car":"Car","car":"Car","Commute":"Commute","commute":"Commute","Transit":"Commute","Bus":"Commute","Train":"Commute","Mortgage/Rent":"Mortgage/Rent","Mortgage":"Mortgage/Rent","Rent":"Mortgage/Rent","Loan":"Loan","loan":"Loan","Work":"Work","work":"Work","Paycheck":"Work","paycheck":"Work","Salary":"Work","Vacation":"Vacation","vacation":"Vacation","ATM":"ATM","atm":"ATM","Subscription":"Subscription","subscription":"Subscription","Medical":"Medical","medical":"Medical","Health":"Medical","health":"Medical","Utilities":"Utilities","utilities":"Utilities","Real Estate":"Real Estate","Investment":"Investment","investment":"Investment","Invest":"Invest","invest":"Invest","Freelance":"Freelance","freelance":"Freelance","Gift":"Gift","gift":"Gift","Refund":"Refund","refund":"Refund","Other Income":"Other Income","Income":"Other Income","Other":"Other","other":"Other"};
+  const CAT_MAP={"Grocery":"Food","grocery":"Food","food":"Food","Store":"Store","store":"Store","Car":"Car","car":"Car","Commute":"Commute","commute":"Commute","Transit":"Commute","Bus":"Commute","Train":"Commute","Mortgage/Rent":"Mortgage/Rent","Mortgage":"Mortgage/Rent","Rent":"Mortgage/Rent","Loan":"Loan","loan":"Loan","Work":"Work","work":"Work","Paycheck":"Work","paycheck":"Work","Salary":"Work","Vacation":"Vacation","vacation":"Vacation","ATM":"ATM","atm":"ATM","Subscription":"Subscription","subscription":"Subscription","Medical":"Medical","medical":"Medical","Utilities":"Utilities","utilities":"Utilities","Investment":"Investment","investment":"Investment","Invest":"Invest","invest":"Invest","Freelance":"Freelance","freelance":"Freelance","Gift":"Gift","gift":"Gift","Refund":"Refund","refund":"Refund","Other Income":"Other Income","Other":"Other","other":"Other"};
 
   if(!loaded) return <Spinner msg="Loading transactions..."/>;
   return(
@@ -1184,16 +1098,20 @@ function Money({ userId }) {
         <button onClick={()=>keyIdx>0&&setViewKey(allKeys[keyIdx-1])} disabled={keyIdx<=0} style={{background:"none",border:"none",fontSize:20,cursor:keyIdx<=0?"default":"pointer",color:keyIdx<=0?"#ddd":C.r}}>›</button>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,flexShrink:0}}>
-        {[["Balance",inc-exp,(inc-exp)>=0?GRN:C.r],["Income",inc,GRN],["Expenses",exp,C.r]].map(([l,v,col])=>(
+        {[["Balance",inc-exp,(inc-exp)>=0?"#1a7a3c":C.r],["Income",inc,"#1a7a3c"],["Expenses",exp,C.r]].map(([l,v,col])=>(
           <div key={l} style={{background:"#fff",borderRadius:14,border:"1.5px solid "+C.bd,padding:"10px 12px",textAlign:"center"}}>
             <div style={{fontSize:9,color:C.g,fontWeight:700,marginBottom:4,letterSpacing:1,textTransform:"uppercase"}}>{l}</div>
             <div style={{fontSize:15,fontWeight:800,color:col,fontFamily:"'Nunito',sans-serif"}}>${Math.abs(v).toFixed(0)}</div>
           </div>
         ))}
       </div>
-      {isCurrent&&<button onClick={()=>{setOpen(!open);setExpandId(null);}} style={{...btn(),borderRadius:12,padding:"12px"}}>+ Add Transaction</button>}
+
+      {isCurrent&&<button onClick={()=>{setOpen(!open);setExpandId(null);}} style={{...btn(),borderRadius:12,padding:"12px",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexShrink:0}}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Add Transaction
+      </button>}
       {open&&isCurrent&&(
-        <div style={{...box,flexShrink:0}}>
+        <div style={{background:"#fff",borderRadius:14,border:"1.5px solid "+C.bd,padding:"16px",flexShrink:0}}>
           <div style={{display:"flex",background:"#F5F0EE",borderRadius:10,padding:3,marginBottom:12,gap:3}}>
             {["Expense","Income"].map(t=>(
               <button key={t} onClick={()=>setForm({...form,type:t,cat:t==="Expense"?MCATS_EXPENSE[0].id:MCATS_INCOME[0].id})} style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:form.type===t?"#fff":"transparent",color:form.type===t?C.k:C.g,fontWeight:700,fontSize:14,cursor:"pointer"}}>
@@ -1299,6 +1217,7 @@ function Money({ userId }) {
   );
 }
 
+
 // ── HEALTH ──
 function HealthFI({k,pl,span,form,setForm}) {
   return <input style={{...inp,...(span?{gridColumn:"span 2"}:{})}} value={form[k]||""} onChange={e=>setForm(f=>({...f,[k]:e.target.value}))} placeholder={pl}/>;
@@ -1375,25 +1294,12 @@ function Health({ userId }) {
       await dbSave(userId,"cal",cal);
     }
     // Schedule reminder
-    if(form.reminder_time){
-      await scheduleNotification(userId,"appointment","Appointment Reminder",
-        (form.title)+(form.doctor?" with "+form.doctor:"")+(form.datetime?" at "+new Date(form.datetime).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"}):""),
-        new Date(form.reminder_time)
-      );
-    }
     setForm({}); setOpen(false);
   };
   const addMed=async()=>{
     if(!form.name) return;
     const id=Date.now();
-    Sm([...meds,{id,...form,imgs:[]}]);
-    if(form.reminder_time){
-      await scheduleNotification(userId,"medication","Medication Reminder",
-        "Time to take "+form.name+(form.dosage?" — "+form.dosage:""),
-        new Date(form.reminder_time)
-      );
-    }
-    setForm({}); setOpen(false);
+    Sm([...meds,{id,...form,imgs:[]}]); setOpen(false);
   };
 
   if(!loaded) return <Spinner msg="Loading health data..."/>;
@@ -1410,7 +1316,6 @@ function Health({ userId }) {
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:9,marginBottom:10}}>
             {tab==="docs"&&<><HealthFI k="name" pl="Doctor Name" form={form} setForm={setForm}/><HealthFI k="specialty" pl="Specialty" form={form} setForm={setForm}/><HealthFI k="phone" pl="Phone" form={form} setForm={setForm}/><HealthFI k="address" pl="Address" form={form} setForm={setForm}/><HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/></>}
             {tab==="apts"&&<>
-                  <div style={{fontSize:11,color:"#0277BD",background:"#EBF5FB",borderRadius:8,padding:"8px 10px",marginTop:6}}>⏰ Set your reminder for the day before — web notifications fire once daily at midnight.</div>
                   <HealthFI k="title" pl="Appointment" form={form} setForm={setForm}/>
                   <HealthFI k="doctor" pl="Doctor" form={form} setForm={setForm}/>
                   <div style={{gridColumn:"span 2"}}>
@@ -1419,22 +1324,13 @@ function Health({ userId }) {
                   </div>
                   <HealthFI k="location" pl="Location" form={form} setForm={setForm}/>
                   <HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/>
-                  <div style={{gridColumn:"span 2"}}>
-                    <div style={{fontSize:11,color:C.g,marginBottom:4,fontWeight:700}}>🔔 Set reminder</div>
-                    <input type="datetime-local" style={{...inp,fontSize:16}} value={form.reminder_time||""} onChange={e=>setForm(f=>({...f,reminder_time:e.target.value}))} min={new Date().toISOString().slice(0,16)}/>
-                  </div>
                 </>}
             {tab==="meds"&&<>
-                  <div style={{fontSize:11,color:"#0277BD",background:"#EBF5FB",borderRadius:8,padding:"8px 10px",marginTop:6}}>⏰ Set your reminder for the day before — web notifications fire once daily at midnight.</div>
                   <HealthFI k="name" pl="Medication" form={form} setForm={setForm}/>
                   <HealthFI k="dosage" pl="Dosage" form={form} setForm={setForm}/>
                   <HealthFI k="frequency" pl="Frequency" form={form} setForm={setForm}/>
                   <HealthFI k="prescriber" pl="Prescriber" form={form} setForm={setForm}/>
                   <HealthFI k="notes" pl="Notes" span form={form} setForm={setForm}/>
-                  <div style={{gridColumn:"span 2"}}>
-                    <div style={{fontSize:11,color:C.g,marginBottom:4,fontWeight:700}}>🔔 Set reminder</div>
-                    <input type="datetime-local" style={{...inp,fontSize:16}} value={form.reminder_time||""} onChange={e=>setForm(f=>({...f,reminder_time:e.target.value}))} min={new Date().toISOString().slice(0,16)}/>
-                  </div>
                 </>}
           </div>
           <div style={{display:"flex",gap:8}}>
@@ -1469,10 +1365,7 @@ function Health({ userId }) {
                 <input style={inp} value={editItemData.date||""} onChange={e=>setEditItemData(f=>({...f,date:e.target.value}))} placeholder="Date"/>
                 <input style={inp} value={editItemData.location||""} onChange={e=>setEditItemData(f=>({...f,location:e.target.value}))} placeholder="Location"/>
                 <input style={inp} value={editItemData.notes||""} onChange={e=>setEditItemData(f=>({...f,notes:e.target.value}))} placeholder="Notes"/>
-                <div>
-                  <div style={{fontSize:12,color:C.g,marginBottom:4,fontWeight:700}}>🔔 Reminder alert</div>
-                  <input type="datetime-local" style={{...inp,fontSize:16}} value={editItemData.reminder_time||""} onChange={e=>setEditItemData(f=>({...f,reminder_time:e.target.value}))} min={new Date().toISOString().slice(0,16)}/>
-                </div>
+
               </>}
               {tab==="meds"&&<>
                 <input style={inp} value={editItemData.name||""} onChange={e=>setEditItemData(f=>({...f,name:e.target.value}))} placeholder="Medication"/>
@@ -1480,10 +1373,7 @@ function Health({ userId }) {
                 <input style={inp} value={editItemData.frequency||""} onChange={e=>setEditItemData(f=>({...f,frequency:e.target.value}))} placeholder="Frequency"/>
                 <input style={inp} value={editItemData.prescriber||""} onChange={e=>setEditItemData(f=>({...f,prescriber:e.target.value}))} placeholder="Prescriber"/>
                 <input style={inp} value={editItemData.notes||""} onChange={e=>setEditItemData(f=>({...f,notes:e.target.value}))} placeholder="Notes"/>
-                <div>
-                  <div style={{fontSize:12,color:C.g,marginBottom:4,fontWeight:700}}>🔔 Next reminder</div>
-                  <input type="datetime-local" style={{...inp,fontSize:16}} value={editItemData.reminder_time||""} onChange={e=>setEditItemData(f=>({...f,reminder_time:e.target.value}))} min={new Date().toISOString().slice(0,16)}/>
-                </div>
+
               </>}
             </div>
             <div style={{display:"flex",gap:8,marginTop:16}}>
@@ -1491,24 +1381,8 @@ function Health({ userId }) {
                 if(tab==="docs") Sd(docs.map(x=>x.id===editItemId?{...x,...editItemData}:x));
                 else if(tab==="apts") {
                   Sa(apts.map(x=>x.id===editItemId?{...x,...editItemData}:x));
-                  if(editItemData.reminder_time) {
-                    await cancelScheduledNotif(userId,"appointment",editItemId);
-                    await scheduleNotification(userId,"appointment",
-                      "Appointment Reminder",
-                      (editItemData.title||"Appointment")+(editItemData.doctor?" with "+editItemData.doctor:"")+" — "+editItemId,
-                      new Date(editItemData.reminder_time)
-                    );
-                  }
                 } else {
                   Sm(meds.map(x=>x.id===editItemId?{...x,...editItemData}:x));
-                  if(editItemData.reminder_time) {
-                    await cancelScheduledNotif(userId,"medication",editItemId);
-                    await scheduleNotification(userId,"medication",
-                      "Medication Reminder",
-                      "Time to take "+(editItemData.name||"your medication")+(editItemData.dosage?" — "+editItemData.dosage:"")+" — "+editItemId,
-                      new Date(editItemData.reminder_time)
-                    );
-                  }
                 }
                 setEditItemId(null);
               }} style={{...btn(),flex:1}}>Save</button>
@@ -2176,46 +2050,16 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
 // ── SETTINGS ──
 function Settings({ user, dark, setDark, onClose }) {
   const [tab,setTab]=useState("account");
-  const [notifSettings,setNotifSettings]=useState({messages:true,shared_items:true,appointments:true,medications:true});
-  const [pushEnabled,setPushEnabled]=useState(false);
-  const [pushLoading,setPushLoading]=useState(false);
+  const [currentAccent,setCurrentAccent]=useState(()=>{ try{ return localStorage.getItem("script_accent")||"#C8220A"; }catch(e){ return "#C8220A"; } });
+
 
   useEffect(()=>{
     loadNotifSettings(user.id).then(s=>{ if(s) setNotifSettings(s); });
-    if("serviceWorker" in navigator){
-      navigator.serviceWorker.getRegistration("/sw.js").then(reg=>{
-        reg?.pushManager?.getSubscription?.().then(sub=>setPushEnabled(!!sub));
-      }).catch(()=>{});
-    }
-  },[user.id]);
+},[user.id]);
 
-  const saveNotifSetting=async(key,val)=>{
-    const updated={...notifSettings,[key]:val};
-    setNotifSettings(updated);
-    await dbSave(user.id,"notif_settings",updated);
-  };
 
-  const [pushError,setPushError]=useState("");
-  const togglePush=async()=>{
-    setPushLoading(true); setPushError("");
-    try{
-      if(pushEnabled){
-        const reg=await navigator.serviceWorker.getRegistration("/sw.js");
-        const sub=await reg?.pushManager?.getSubscription?.();
-        await sub?.unsubscribe?.();
-        await sb.from("push_subscriptions").delete().eq("user_id",user.id);
-        setPushEnabled(false);
-      } else {
-        if(!("serviceWorker" in navigator)){setPushError("Service workers not supported in this browser.");setPushLoading(false);return;}
-        if(!("PushManager" in window)){setPushError("Push notifications not supported in this browser.");setPushLoading(false);return;}
-        if(Notification.permission==="denied"){setPushError("Notifications blocked. Go to browser Settings > Site Settings > Notifications and allow this site.");setPushLoading(false);return;}
-        const sub=await registerPush(user.id);
-        if(sub){ setPushEnabled(true); }
-        else { setPushError("Could not enable — tap Allow if your browser asks, or check site notification permissions."); }
-      }
-    }catch(e){ setPushError("Error: "+e.message); }
-    setPushLoading(false);
-  };
+
+
   const [newEmail,setNewEmail]=useState("");
   const [newPass,setNewPass]=useState("");
   const [confPass,setConfPass]=useState("");
@@ -2280,18 +2124,17 @@ function Settings({ user, dark, setDark, onClose }) {
                 <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>Accent Color</div>
                 <div style={{display:"flex",flexWrap:"wrap",gap:12,marginBottom:8}}>
                   {ACCENT_COLORS.map(ac=>{
-                    const cur = (()=>{ try{ return localStorage.getItem("script_accent")||"#C8220A"; }catch(e){ return "#C8220A"; } })();
-                    const isCur = cur===ac.hex;
+
                     return(
-                      <button key={ac.id} onClick={()=>{ setAccent(ac.hex); window.location.reload(); }}
+                      <button key={ac.id} onClick={()=>{ setAccent(ac.hex); setCurrentAccent(ac.hex); C.r=ac.hex; }}
                         style={{display:"flex",flexDirection:"column",alignItems:"center",gap:4,background:"none",border:"none",cursor:"pointer",padding:0}}>
-                        <div style={{width:38,height:38,borderRadius:"50%",background:ac.hex,border:isCur?"3px solid "+txt:"3px solid transparent",boxSizing:"border-box",boxShadow:isCur?"0 0 0 2px "+ac.hex:"none"}}/>
-                        <span style={{fontSize:10,color:isCur?txt:sub,fontWeight:isCur?800:500}}>{ac.label}</span>
+                        <div style={{width:38,height:38,borderRadius:"50%",background:ac.hex,border:currentAccent===ac.hex?"3px solid "+txt:"3px solid transparent",boxSizing:"border-box"}}/>
+                        <span style={{fontSize:10,color:currentAccent===ac.hex?txt:sub,fontWeight:currentAccent===ac.hex?800:500}}>{ac.label}</span>
                       </button>
                     );
                   })}
                 </div>
-                <div style={{fontSize:11,color:sub}}>Tap a color to apply. App restarts instantly.</div>
+                <div style={{fontSize:11,color:sub}}>Tap a color to apply — changes immediately.</div>
               </div>
               <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
                 <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>App Sections</div>
@@ -2303,44 +2146,13 @@ function Settings({ user, dark, setDark, onClose }) {
               </div>
             </>
           )}
-          {tab==="notifications"&&<>
-            <div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
-              <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Push Notifications</div>
-              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                <div>
-                  <div style={{fontSize:14,fontWeight:700,color:txt}}>Enable on this device</div>
-                  <div style={{fontSize:12,color:sub,marginTop:2}}>Alerts on lock screen when app is closed</div>
-                </div>
-                <button onClick={togglePush} disabled={pushLoading} style={{width:50,height:28,borderRadius:14,background:pushEnabled?C.r:"#E5E5EA",border:"none",cursor:"pointer",position:"relative",transition:"background .2s",opacity:pushLoading?0.6:1}}>
-                  <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:pushEnabled?25:3,transition:"left .2s"}}/>
-                </button>
-              </div>
-              {pushError&&<div style={{fontSize:12,color:"#ff3b30",background:"rgba(255,59,48,.08)",borderRadius:8,padding:"10px 12px"}}>{pushError}</div>}
-              {!pushEnabled&&!pushError&&<div style={{fontSize:11,color:sub,background:bg,borderRadius:8,padding:"8px 10px"}}>Tap the toggle, then tap Allow when your browser asks.</div>}
-              <div style={{fontSize:11,color:sub,background:bg,borderRadius:8,padding:"8px 10px",marginTop:4}}>⚠️ Web notifications only work when Script is saved to your home screen. In Safari: tap Share → Add to Home Screen.</div>
+          {tab==="notifications"&&(
+            <div style={{background:bg2,borderRadius:14,padding:"20px 16px",textAlign:"center"}}>
+              <div style={{fontSize:32,marginBottom:12}}>🔔</div>
+              <div style={{fontSize:16,fontWeight:800,color:txt,marginBottom:8}}>Notifications Coming Soon</div>
+              <div style={{fontSize:13,color:sub,lineHeight:1.6}}>Push notifications with exact-time alerts will be available in the Script native app. Stay tuned!</div>
             </div>
-            {pushEnabled&&<>
-            <div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
-              <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Alert me for</div>
-              {[["messages","💬 New messages"],["shared_items","📥 Items shared with me"],["appointments","📅 Appointment reminders"],["medications","💊 Medication reminders"]].map(([key,label])=>(
-                <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                  <div style={{fontSize:14,color:txt,fontWeight:500}}>{label}</div>
-                  <button onClick={()=>saveNotifSetting(key,!notifSettings[key])} style={{width:50,height:28,borderRadius:14,background:notifSettings[key]?C.r:"#E5E5EA",border:"none",cursor:"pointer",position:"relative",transition:"background .2s"}}>
-                    <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:notifSettings[key]?25:3,transition:"left .2s"}}/>
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
-              <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>How to set reminders</div>
-              <div style={{fontSize:12,color:sub,lineHeight:1.6}}>
-                📅 <span style={{fontWeight:700,color:txt}}>Calendar</span> — tap any day, tap the 🔔 icon to set an alert for that date.<br/>
-                💊 <span style={{fontWeight:700,color:txt}}>Medications</span> — tap 📎 on any med, tap Edit, set reminder time.<br/>
-                🏥 <span style={{fontWeight:700,color:txt}}>Appointments</span> — tap 📎 on any appointment, tap Edit, set reminder time.
-              </div>
-            </div>
-            </>}
-          </>}
+          )}
           {err&&<div style={{color:"#ff6060",fontSize:13,background:"rgba(255,80,80,.08)",borderRadius:10,padding:"10px 14px"}}>{err}</div>}
           {msg&&<div style={{color:"#34c759",fontSize:13,background:"rgba(52,199,89,.08)",borderRadius:10,padding:"10px 14px"}}>{msg}</div>}
         </div>
