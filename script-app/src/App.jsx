@@ -2060,20 +2060,25 @@ function Settings({ user, dark, setDark, onClose }) {
     await dbSave(user.id,"notif_settings",updated);
   };
 
+  const [pushError,setPushError]=useState("");
   const togglePush=async()=>{
-    setPushLoading(true);
-    if(pushEnabled){
-      try{
+    setPushLoading(true); setPushError("");
+    try{
+      if(pushEnabled){
         const reg=await navigator.serviceWorker.getRegistration("/sw.js");
         const sub=await reg?.pushManager?.getSubscription?.();
         await sub?.unsubscribe?.();
         await sb.from("push_subscriptions").delete().eq("user_id",user.id);
         setPushEnabled(false);
-      }catch(e){}
-    } else {
-      const sub=await registerPush(user.id);
-      setPushEnabled(!!sub);
-    }
+      } else {
+        if(!("serviceWorker" in navigator)){setPushError("Service workers not supported in this browser.");setPushLoading(false);return;}
+        if(!("PushManager" in window)){setPushError("Push notifications not supported in this browser.");setPushLoading(false);return;}
+        if(Notification.permission==="denied"){setPushError("Notifications blocked. Go to browser Settings > Site Settings > Notifications and allow this site.");setPushLoading(false);return;}
+        const sub=await registerPush(user.id);
+        if(sub){ setPushEnabled(true); }
+        else { setPushError("Could not enable — tap Allow if your browser asks, or check site notification permissions."); }
+      }
+    }catch(e){ setPushError("Error: "+e.message); }
     setPushLoading(false);
   };
   const [newEmail,setNewEmail]=useState("");
@@ -2158,7 +2163,8 @@ function Settings({ user, dark, setDark, onClose }) {
                   <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:pushEnabled?25:3,transition:"left .2s"}}/>
                 </button>
               </div>
-              {!pushEnabled&&<div style={{fontSize:11,color:sub,background:bg,borderRadius:8,padding:"8px 10px"}}>Tap Enable, then tap Allow when your browser asks.</div>}
+              {pushError&&<div style={{fontSize:12,color:"#ff3b30",background:"rgba(255,59,48,.08)",borderRadius:8,padding:"10px 12px"}}>{pushError}</div>}
+              {!pushEnabled&&!pushError&&<div style={{fontSize:11,color:sub,background:bg,borderRadius:8,padding:"8px 10px"}}>Tap the toggle, then tap Allow when your browser asks.</div>}
             </div>
             {pushEnabled&&<>
             <div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
