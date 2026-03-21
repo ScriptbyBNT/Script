@@ -255,9 +255,12 @@ function ShareModal({ title, onSend, onClose, userId, friends=[] }) {
   const [errMsg, setErrMsg] = useState("");
   const [recents, setRecents] = useState([]);
 
+  const [contacts, setContacts] = useState(friends);
   useEffect(()=>{
     if(userId) {
       dbLoad(userId,"share_recents").then(v=>{ if(v&&Array.isArray(v)) setRecents(v); else { try{ const ls=JSON.parse(localStorage.getItem("script_recents")||"[]"); setRecents(ls); }catch(e){} } });
+      // Load friends so nickname resolution works
+      if(!friends.length) dbLoad(userId,"friends").then(v=>{ if(v) setContacts(v); });
     } else { try{ const ls=JSON.parse(localStorage.getItem("script_recents")||"[]"); setRecents(ls); }catch(e){} }
   },[userId]);
 
@@ -271,7 +274,7 @@ function ShareModal({ title, onSend, onClose, userId, friends=[] }) {
   const resolveAddr = (input) => {
     const v = input.trim().toLowerCase();
     // Check if input matches a nickname — resolve to email
-    const byNick = friends.find(f => f.nickname && f.nickname.trim().toLowerCase()===v);
+    const byNick = contacts.find(f => f.nickname && f.nickname.trim().toLowerCase()===v);
     if(byNick) return byNick.email;
     return v;
   };
@@ -305,7 +308,7 @@ function ShareModal({ title, onSend, onClose, userId, friends=[] }) {
             <div style={{display:"flex",flexWrap:"wrap",gap:7}}>
               {recents.map(r=>(
                 <button key={r} onClick={()=>send(r)} style={{padding:"6px 12px",borderRadius:20,border:"1.5px solid #E8D5D0",background:"#fff",color:C.k,fontSize:12,fontWeight:600,cursor:"pointer",maxWidth:200,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                  {(()=>{const f=friends.find(x=>x.email===r); return f?.nickname||f?.username||r;})()}
+                  {(()=>{const f=contacts.find(x=>x.email===r); return f?.nickname||f?.username||r;})()}
                 </button>
               ))}
             </div>
@@ -1893,6 +1896,7 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
   const [unread, setUnread] = useState({});
   const [sharedItems, setSharedItems] = useState([]);
   const [swipedId, setSwipedId] = useState(null);
+  const touchStartX = useRef(0);
   const [loaded, setLoaded] = useState(false);
   const bg=dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":C.bd, txt=dark?"#F2F2F7":C.k, sub=dark?"#8E8E93":C.g;
 
@@ -2054,8 +2058,8 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
               <button onClick={async e=>{ e.stopPropagation(); await dbSave(userId,"friends",friends.filter(x=>x.email!==f.email)); setFriends(friends.filter(x=>x.email!==f.email)); }} style={{background:"none",border:"none",color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer"}}>Delete</button>
             </div>
             <div onClick={()=>{ if(swiped){setSwiped(false);return;} setActiveFriend({...f, email: f.email||""}); }}
-              onTouchStart={e=>{ const sx=e.touches[0].clientX; e._sx=sx; }}
-              onTouchEnd={e=>{ const dx=(e.changedTouches[0].clientX)-(e.currentTarget._sx||e.changedTouches[0].clientX); if(dx<-40) setSwiped(true); else if(dx>20) setSwiped(false); }}
+              onTouchStart={e=>{ touchStartX.current=e.touches[0].clientX; }}
+              onTouchEnd={e=>{ const dx=e.changedTouches[0].clientX-touchStartX.current; if(dx<-40) setSwiped(true); else if(dx>20) setSwiped(false); }}
               style={{transform:swiped?"translateX(-80px)":"translateX(0)",transition:"transform .2s",background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
             <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0,position:"relative"}}>
               {(f.username||f.email)?.[0]?.toUpperCase()}
@@ -2085,6 +2089,235 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
     </div>
   );
 }
+
+// ── HABITZ ──
+const HABITZ_ICONS = [
+  "🏃","🧘","📚","✍️","🎯","💪","🧠","🍎","💧","😴","🧹","🛁","🐕","🧗","🚴",
+  "🏊","⚽","🎸","🎹","🎨","✏️","📝","💼","🗣️","🤝","🙏","❤️","🌱","🌞","⭐",
+  "🔥","💡","🎉","🏆","🎖️","🥇","✅","⚡","🌈","🦋","🌸","🍀","🌻","🦁","🐬",
+  "🦅","🌊","🏔️","🌙","☀️","🎵","🎶","📖","💰","🔑","🔓","💎","👑","🎓","🛡️",
+  "⚔️","🗺️","🧭","🔭","🌍","🚀","✈️","🏡","🌆","🌃","🎪","🎢","🎠","🎡","🎭",
+  "🎬","🎮","🕹️","🎲","♟️","🧩","🃏","🎴","🀄","🎯","🥊","🤸","🧜","🧙","🧚",
+  "❄️","⛄","🌺","🌴","🌵","🍄","🐝","🦊","🐼","🦄","🐉","💫","✨","🌠","🏅",
+];
+const HABITZ_TIERS = [
+  {name:"Bronze",  min:0,    max:99,   emoji:"🥉", color:"#92400e", bg:"#fef3c7", bar:"linear-gradient(90deg,#d97706,#f59e0b)"},
+  {name:"Silver",  min:100,  max:249,  emoji:"🥈", color:"#374151", bg:"#f3f4f6", bar:"linear-gradient(90deg,#6b7280,#9ca3af)"},
+  {name:"Gold",    min:250,  max:499,  emoji:"🥇", color:"#92400e", bg:"#fffbeb", bar:"linear-gradient(90deg,#d97706,#fbbf24)"},
+  {name:"Platinum",min:500,  max:999,  emoji:"💠", color:"#374151", bg:"#f1f5f9", bar:"linear-gradient(90deg,#64748b,#94a3b8)"},
+  {name:"Diamond", min:1000, max:Infinity, emoji:"💎", color:"#0369a1", bg:"#e0f2fe", bar:"linear-gradient(90deg,#0284c7,#38bdf8)"},
+];
+function hGetTier(pts){ return HABITZ_TIERS.find(t=>pts>=t.min&&pts<=t.max)||HABITZ_TIERS[0]; }
+function hGetNextTier(pts){ return HABITZ_TIERS.find(t=>t.min>pts)||null; }
+
+const HABITZ_FREQS = ["daily","weekly","monthly","yearly"];
+const HABITZ_DAYS = ["Su","Mo","Tu","We","Th","Fr","Sa"];
+const HABITZ_MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+
+function HabitzTimePicker({value, onChange, dark}) {
+  const HOURS=["12","01","02","03","04","05","06","07","08","09","10","11"];
+  const MINS=["00","15","30","45"];
+  const parse=(v)=>{ if(!v) return {h:"07",m:"00",ap:"AM"}; const [hr,mn]=v.split(":"); let h=parseInt(hr); const ap=h<12?"AM":"PM"; h=h%12||12; return {h:String(h).padStart(2,"0"),m:mn||"00",ap}; };
+  const [hv,setHv]=useState(parse(value).h);
+  const [mv,setMv]=useState(parse(value).m);
+  const [ap,setAp]=useState(parse(value).ap);
+  const emit=(nh,nm,na)=>{ let hr=parseInt(nh); if(na==="AM"&&hr===12) hr=0; if(na==="PM"&&hr!==12) hr+=12; onChange(String(hr).padStart(2,"0")+":"+nm); };
+  const sel={background:dark?"#2C2C2E":"#fff",border:"1.5px solid "+(dark?"#3A3A3C":"#e2e8f0"),borderRadius:8,padding:"8px 4px",color:dark?"#F2F2F7":"#1e293b",fontSize:14,fontWeight:700,outline:"none",fontFamily:"inherit",flex:1};
+  return(
+    <div style={{display:"flex",gap:6,alignItems:"center"}}>
+      <select value={hv} onChange={e=>{setHv(e.target.value);emit(e.target.value,mv,ap);}} style={sel}>{HOURS.map(v=><option key={v}>{v}</option>)}</select>
+      <span style={{fontWeight:900,color:dark?"#8E8E93":"#64748b"}}>:</span>
+      <select value={mv} onChange={e=>{setMv(e.target.value);emit(hv,e.target.value,ap);}} style={sel}>{MINS.map(v=><option key={v}>{v}</option>)}</select>
+      <select value={ap} onChange={e=>{setAp(e.target.value);emit(hv,mv,e.target.value);}} style={{...sel,flex:"0 0 auto"}}><option>AM</option><option>PM</option></select>
+    </div>
+  );
+}
+
+function Habitz({userId, dark, accent}) {
+  const bg=dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":"#e2e8f0", txt=dark?"#F2F2F7":"#1e293b", sub=dark?"#8E8E93":"#64748b";
+  const [habits,setHabits]=useState([]);
+  const [completions,setCompletions]=useState({});
+  const [points,setPoints]=useState(0);
+  const [freqTab,setFreqTab]=useState("daily");
+  const [page,setPage]=useState("today");
+  const [expandedId,setExpandedId]=useState(null);
+  const [showAdd,setShowAdd]=useState(false);
+  const [editHabit,setEditHabit]=useState(null);
+  const [form,setForm]=useState({name:"",icon:"🏃",freq:"daily",reminder:""});
+  const [showIconPicker,setShowIconPicker]=useState(false);
+  const [loaded,setLoaded]=useState(false);
+  const todayKey=new Date().toISOString().slice(0,10);
+
+  useEffect(()=>{
+    dbLoad(userId,"habitz").then(v=>{
+      if(v){ setHabits(v.habits||[]); setCompletions(v.completions||{}); setPoints(v.points||0); }
+      else { setHabits([{id:1,name:"Daily Exercise",icon:"🏃",freq:"daily",reminder:""},{id:2,name:"Read 20 mins",icon:"📚",freq:"daily",reminder:""}]); }
+      setLoaded(true);
+    });
+  },[userId]);
+
+  const save=async(habits,completions,points)=>{ await dbSave(userId,"habitz",{habits,completions,points}); };
+
+  const toggle=(habitId,dk)=>{
+    const day=completions[dk]||{}, was=!!day[habitId];
+    const newComp={...completions,[dk]:{...day,[habitId]:!was}};
+    const newPts=Math.max(0,was?points-5:points+10);
+    setCompletions(newComp); setPoints(newPts);
+    save(habits,newComp,newPts);
+  };
+
+  const saveHabit=()=>{
+    if(!form.name.trim()) return;
+    let newHabits;
+    if(editHabit) newHabits=habits.map(h=>h.id===editHabit.id?{...h,...form}:h);
+    else newHabits=[...habits,{id:Date.now(),...form}];
+    setHabits(newHabits); save(newHabits,completions,points);
+    setForm({name:"",icon:"🏃",freq:"daily",reminder:""}); setEditHabit(null); setShowAdd(false); setShowIconPicker(false);
+  };
+
+  const delHabit=(id)=>{ const h=habits.filter(x=>x.id!==id); setHabits(h); save(h,completions,points); };
+  const getStreak=(id)=>{ let s=0; const d=new Date(); while(s<365){const k=new Date(d); k.setDate(k.getDate()-s); const dk2=k.toISOString().slice(0,10); if((completions[dk2]||{})[id]) s++; else break; } return s; };
+  const fmt12=(v)=>{ if(!v) return ""; const [hr,mn]=v.split(":"); let h=parseInt(hr); const ap=h<12?"AM":"PM"; h=h%12||12; return h+":"+mn+" "+ap; };
+
+  const shownHabits=habits.filter(h=>h.freq===freqTab);
+  const dayComp=completions[todayKey]||{};
+  const doneCount=shownHabits.filter(h=>dayComp[h.id]).length;
+  const pct=shownHabits.length?Math.round(doneCount/shownHabits.length*100):0;
+  const tier=hGetTier(points);
+  const nextTier=hGetNextTier(points);
+  const tierPct=nextTier?Math.round((points-tier.min)/(nextTier.min-tier.min)*100):100;
+
+  const inp={background:bg2,border:"1.5px solid "+bdr,borderRadius:10,padding:"11px 13px",color:txt,fontSize:14,outline:"none",fontFamily:"inherit",width:"100%"};
+  const tabBtn=(active)=>({flex:1,padding:"7px 2px",borderRadius:8,border:"1.5px solid "+(active?accent+"66":bdr),background:active?accent+"18":bg2,color:active?accent:sub,fontSize:11,fontWeight:700,cursor:"pointer",textTransform:"capitalize"});
+
+  if(!loaded) return <Spinner msg="Loading Habitz..."/>;
+  return(
+    <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:10,minHeight:0,paddingBottom:8}}>
+      {/* Tier bar */}
+      <div style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"12px 14px",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <div style={{fontSize:28}}>{tier.emoji}</div>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:800,fontSize:14,color:txt}}>{tier.name} · {points} pts</div>
+            <div style={{fontSize:11,color:sub}}>{nextTier?`${nextTier.min-points} to ${nextTier.name} ${nextTier.emoji}`:"Max tier reached! 💎"}</div>
+          </div>
+          <div style={{fontSize:28,fontWeight:900,color:accent}}>{pct}%</div>
+        </div>
+        {nextTier&&<div style={{height:6,background:bdr,borderRadius:99}}><div style={{height:"100%",borderRadius:99,background:accent,width:tierPct+"%",transition:"width .4s"}}/></div>}
+      </div>
+
+      {/* Freq tabs */}
+      <div style={{display:"flex",gap:5,flexShrink:0}}>
+        {HABITZ_FREQS.map(t=><button key={t} onClick={()=>setFreqTab(t)} style={tabBtn(freqTab===t)}>{t}</button>)}
+      </div>
+
+      {/* Today page */}
+      {page==="today"&&<>
+        {shownHabits.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>No {freqTab} habits yet. Tap + to add one!</div>}
+        {shownHabits.map(habit=>{
+          const done=!!dayComp[habit.id];
+          const isOpen=expandedId===habit.id;
+          const streak=getStreak(habit.id);
+          return(
+            <div key={habit.id} style={{background:bg2,borderRadius:14,border:"1.5px solid "+(done?accent:bdr),overflow:"hidden"}}>
+              <div style={{padding:"12px 14px",display:"flex",alignItems:"center",gap:10}}>
+                <button onClick={()=>toggle(habit.id,todayKey)} style={{width:28,height:28,borderRadius:8,flexShrink:0,border:"2px solid "+(done?accent:bdr),background:done?accent:"transparent",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:14}}>
+                  {done?"✓":""}
+                </button>
+                <div style={{width:38,height:38,borderRadius:10,background:done?accent+"22":dark?"#2A2A3A":"#f8fafc",border:"1.5px solid "+(done?accent:bdr),display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{habit.icon}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:14,color:txt,textDecoration:done?"line-through":"none"}}>{habit.name}</div>
+                  {habit.reminder&&<div style={{fontSize:10,color:sub,marginTop:1}}>⏰ {fmt12(habit.reminder)}</div>}
+                </div>
+                {streak>0&&<div style={{fontSize:11,fontWeight:800,color:"#f97316"}}>🔥{streak}</div>}
+                <button onClick={()=>setExpandedId(isOpen?null:habit.id)} style={{background:"none",border:"1.5px solid "+bdr,borderRadius:8,width:26,height:26,cursor:"pointer",color:sub,fontSize:10,display:"flex",alignItems:"center",justifyContent:"center"}}>{isOpen?"▲":"▼"}</button>
+              </div>
+              {isOpen&&<div style={{borderTop:"1px solid "+bdr,padding:"10px 14px",display:"flex",gap:8}}>
+                <button onClick={()=>{setEditHabit(habit);setForm({name:habit.name,icon:habit.icon,freq:habit.freq,reminder:habit.reminder||""});setShowAdd(true);}} style={{...tabBtn(false),flex:1,fontSize:12,padding:"8px"}}>✏ Edit</button>
+                <button onClick={()=>delHabit(habit.id)} style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:8,padding:"8px 14px",color:"#ef4444",fontSize:12,fontWeight:700,cursor:"pointer"}}>× Delete</button>
+              </div>}
+            </div>
+          );
+        })}
+      </>}
+
+      {/* Stats page */}
+      {page==="stats"&&<>
+        {HABITZ_TIERS.map(tr=>{
+          const active=points>=tr.min;
+          return(
+            <div key={tr.name} style={{background:active?tr.bg:bg2,border:"1.5px solid "+(active?tr.bar.split(",")[1].trim().slice(0,-1):bdr),borderRadius:12,padding:"10px 14px",display:"flex",alignItems:"center",gap:10,opacity:active?1:0.5}}>
+              <span style={{fontSize:24}}>{tr.emoji}</span>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:13,color:active?tr.color:sub}}>{tr.name}</div>
+                <div style={{fontSize:11,color:sub}}>{tr.min}–{tr.max===Infinity?"∞":tr.max} pts</div>
+              </div>
+              {active&&<span style={{fontSize:18}}>✓</span>}
+            </div>
+          );
+        })}
+        <div style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"12px 14px"}}>
+          <div style={{fontSize:10,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:10}}>Per Habit</div>
+          {habits.map(h=>{
+            const s=getStreak(h.id);
+            const total=Object.values(completions).filter(d=>d[h.id]).length;
+            return(
+              <div key={h.id} style={{display:"flex",alignItems:"center",gap:10,paddingBottom:8,marginBottom:8,borderBottom:"1px solid "+bdr}}>
+                <span style={{fontSize:20}}>{h.icon}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:13,fontWeight:700,color:txt}}>{h.name}</div>
+                  <div style={{fontSize:11,color:sub}}>{total} total · {s} day streak</div>
+                </div>
+                {s>0&&<div style={{fontSize:13,fontWeight:800,color:"#f97316"}}>🔥{s}</div>}
+              </div>
+            );
+          })}
+        </div>
+      </>}
+
+      {/* Page tabs */}
+      <div style={{display:"flex",gap:8,flexShrink:0}}>
+        <button onClick={()=>setPage("today")} style={tabBtn(page==="today")}>Today</button>
+        <button onClick={()=>setPage("stats")} style={tabBtn(page==="stats")}>Stats</button>
+        <button onClick={()=>{setEditHabit(null);setForm({name:"",icon:"🏃",freq:freqTab,reminder:""});setShowAdd(true);}} style={{...tabBtn(false),background:accent,color:"#fff",border:"none",fontWeight:800}}>+ Add</button>
+      </div>
+
+      {/* Add/Edit sheet */}
+      {showAdd&&(
+        <div onClick={e=>e.target===e.currentTarget&&setShowAdd(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:600,display:"flex",alignItems:"flex-end"}}>
+          <div style={{background:bg2,borderRadius:"22px 22px 0 0",width:"100%",padding:"20px 20px 40px",maxHeight:"85vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:16}}><div style={{width:40,height:4,borderRadius:2,background:bdr}}/></div>
+            <div style={{fontWeight:900,fontSize:17,color:txt,marginBottom:16}}>{editHabit?"Edit Habit":"New Habit"}</div>
+            {/* Icon */}
+            <div style={{marginBottom:12}}>
+              <button onClick={()=>setShowIconPicker(x=>!x)} style={{width:52,height:52,borderRadius:12,fontSize:26,background:dark?"#2A2A3A":"#f8fafc",border:"1.5px solid "+bdr,cursor:"pointer"}}>{form.icon}</button>
+              {showIconPicker&&<div style={{display:"grid",gridTemplateColumns:"repeat(8,1fr)",gap:5,marginTop:8,maxHeight:160,overflowY:"auto"}}>
+                {HABITZ_ICONS.map(ic=><button key={ic} onClick={()=>{setForm(f=>({...f,icon:ic}));setShowIconPicker(false);}} style={{fontSize:22,background:"none",border:"1.5px solid "+bdr,borderRadius:8,padding:4,cursor:"pointer"}}>{ic}</button>)}
+              </div>}
+            </div>
+            {/* Name */}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:sub,fontWeight:700,marginBottom:6}}>HABIT NAME</div>
+              <input value={form.name} onChange={e=>setForm(f=>({...f,name:e.target.value}))} placeholder="e.g. Read 20 mins" style={inp}/>
+            </div>
+            {/* Freq */}
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:11,color:sub,fontWeight:700,marginBottom:6}}>FREQUENCY</div>
+              <div style={{display:"flex",gap:6}}>{HABITZ_FREQS.map(f=><button key={f} onClick={()=>setForm(x=>({...x,freq:f}))} style={tabBtn(form.freq===f)}>{f}</button>)}</div>
+            </div>
+            {/* Reminder */}
+            <div style={{marginBottom:20}}>
+              <div style={{fontSize:11,color:sub,fontWeight:700,marginBottom:6}}>REMINDER (optional)</div>
+              <HabitzTimePicker value={form.reminder} onChange={v=>setForm(f=>({...f,reminder:v}))} dark={dark}/>
+            </div>
+            <button onClick={saveHabit} style={{width:"100%",padding:"14px",borderRadius:12,background:accent,border:"none",color:"#fff",fontWeight:800,fontSize:15,cursor:"pointer"}}>Save Habit</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── SETTINGS ──
 function Settings({ user, dark, setDark, accent, onAccent, onClose }) {
   const [tab,setTab]=useState("account");
@@ -2215,25 +2448,35 @@ export default function Script() {
   const [showMenu,setShowMenu]=useState(false);
   const [msgUnread,setMsgUnread]=useState(0);
   const [showSett,setShowSett]=useState(false);
-  const [dark,setDark]=useState(()=>{ try{ return localStorage.getItem("script_dark")==="1"; }catch(e){ return false; } });
-  const [accent,setAccentState]=useState(()=>{ try{ return localStorage.getItem("script_accent")||"#C8220A"; }catch(e){ return "#C8220A"; } });
-  const changeAccent=(hex)=>{ setAccentState(hex); C.r=hex; try{ localStorage.setItem("script_accent",hex); }catch(e){} };
+  const readPref=(k,def)=>{
+    try{ const v=localStorage.getItem(k); if(v!==null) return v; }catch(e){}
+    try{ const m=document.cookie.match(new RegExp("(?:^|; )"+k+"=([^;]*)")); if(m) return decodeURIComponent(m[1]); }catch(e){}
+    return def;
+  };
+  const savePref=(k,v)=>{
+    try{ localStorage.setItem(k,v); }catch(e){}
+    try{ document.cookie=k+"="+encodeURIComponent(v)+";path=/;max-age=31536000;SameSite=Lax"; }catch(e){}
+  };
+  const [dark,setDark]=useState(()=>readPref("script_dark","0")==="1");
+  const [accent,setAccentState]=useState(()=>readPref("script_accent","#C8220A"));
+  const changeAccent=(hex)=>{ setAccentState(hex); C.r=hex; savePref("script_accent",hex); };
   const [booting,setBooting]=useState(true);
   const [inbox,setInbox]=useState([]);
   const [showInbox,setShowInbox]=useState(false);
   const [showChat,setShowChat]=useState(false);
+  const [showHabitz,setShowHabitz]=useState(false);
 
   const hash=window.location.hash;
   const hashShare=hash.match(/^#share\/(.+)$/);
   if(hashShare) return <SharedCalendarView shareId={hashShare[1]}/>;
 
   useEffect(()=>{
-    try{ localStorage.setItem("script_dark",dark?"1":"0"); }catch(e){}
+    savePref("script_dark",dark?"1":"0");
     if(user) dbSave(user.id,"ui_prefs",{dark,accent}).catch(()=>{});
   },[dark]);
   useEffect(()=>{
     C.r=accent;
-    try{ localStorage.setItem("script_accent",accent); }catch(e){}
+    savePref("script_accent",accent);
     if(user) dbSave(user.id,"ui_prefs",{dark,accent}).catch(()=>{});
   },[accent]);
   useEffect(()=>{
@@ -2258,10 +2501,27 @@ export default function Script() {
   useEffect(()=>{
     if(!user?.email) return;
     loadInbox(user.email).then(setInbox);
-    // Poll every 30s for new shared items
     const t=setInterval(()=>loadInbox(user.email).then(setInbox),30000);
     return()=>clearInterval(t);
   },[user]);
+
+  // Sync UI prefs from DB whenever user is set or app comes back into focus
+  const applyPrefs = (prefs) => {
+    if(!prefs) return;
+    if(prefs.dark!==undefined && prefs.dark!==dark){ setDark(prefs.dark); savePref("script_dark",prefs.dark?"1":"0"); }
+    if(prefs.accent && prefs.accent!==accent){ setAccentState(prefs.accent); C.r=prefs.accent; savePref("script_accent",prefs.accent); }
+  };
+
+  useEffect(()=>{
+    if(!user?.id) return;
+    // Load prefs immediately when user logs in
+    dbLoad(user.id,"ui_prefs").then(applyPrefs).catch(()=>{});
+    // Re-sync when app comes back into focus (e.g. switching from phone to computer)
+    const onFocus = () => dbLoad(user.id,"ui_prefs").then(applyPrefs).catch(()=>{});
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", ()=>{ if(document.visibilityState==="visible") onFocus(); });
+    return()=>{ window.removeEventListener("focus", onFocus); };
+  },[user?.id]);
 
 
   const acceptShared = async (item) => {
@@ -2344,12 +2604,15 @@ export default function Script() {
       <style>{`input,select,textarea{font-size:16px!important;}`}</style>
       {dark&&<style>{`input,select,textarea{background:#2C2C2E !important;color:#F2F2F7 !important;border-color:#3A3A3C !important;}input::placeholder,textarea::placeholder{color:#636366 !important;}`}</style>}
       <div style={{background:D.headerBg,borderBottom:"1.5px solid "+D.border,padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:9}}>
+        <div style={{display:"flex",alignItems:"center",gap:9}}> 
           <div style={{width:30,height:30,borderRadius:8,background:C.r,display:"flex",alignItems:"center",justifyContent:"center"}}><ScrollIcon sz={18} white={true}/></div>
           <span style={{fontFamily:"'Nunito',sans-serif",fontSize:20,fontWeight:900,color:C.r,letterSpacing:-0.5}}>Script</span>
+          <span style={{fontSize:11,color:D.sub,fontWeight:600}}>{new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
+          <button onClick={()=>setShowHabitz(true)} style={{display:"flex",alignItems:"center",gap:4,background:"#3b82f6",border:"none",borderRadius:20,padding:"5px 11px",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:800,letterSpacing:.3}}>
+            ✅ Habitz
+          </button>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <span style={{fontSize:12,color:D.sub,fontWeight:600}}>{new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
           <button onClick={()=>setShowChat(true)} style={{display:"flex",alignItems:"center",gap:5,background:C.r,border:"none",borderRadius:20,padding:"5px 11px",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:800,letterSpacing:.3}}>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             Scrypt Chat
@@ -2401,6 +2664,17 @@ export default function Script() {
           </div>
           <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",padding:"14px 16px"}}>
             <Messages userId={user.id} userEmail={user.email||""} dark={dark} onSaveToChalk={handleSaveToChalk} onAcceptShared={async(item)=>{ await acceptShared(item); }}/>
+          </div>
+        </div>
+      )}
+      {showHabitz&&(
+        <div style={{position:"fixed",inset:0,zIndex:800,background:D.pageBg,display:"flex",flexDirection:"column"}}>
+          <div style={{background:D.headerBg,borderBottom:"1.5px solid "+D.border,padding:"10px 16px",display:"flex",alignItems:"center",gap:10,flexShrink:0}}>
+            <button onClick={()=>setShowHabitz(false)} style={{background:"none",border:"none",cursor:"pointer",color:"#3b82f6",fontSize:22,fontWeight:900,lineHeight:1,padding:0}}>‹</button>
+            <span style={{fontFamily:"'Nunito',sans-serif",fontSize:18,fontWeight:900,color:"#3b82f6"}}>✅ Habitz</span>
+          </div>
+          <div style={{flex:1,overflow:"hidden",display:"flex",flexDirection:"column",padding:"14px 16px"}}>
+            <Habitz userId={user.id} dark={dark} accent={accent}/>
           </div>
         </div>
       )}
