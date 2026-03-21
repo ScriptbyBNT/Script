@@ -2586,7 +2586,7 @@ function ScriptHabitz({ onBack, savedData, onSave }) {
                   <div>
                     <div style={{fontSize:13,fontWeight:800,color:"#374151"}}>Platinum Streak: {getPlatinumStreak()} day{getPlatinumStreak()!==1?"s":""}</div>
                     <div style={{fontSize:10,color:"#6b7280",marginTop:1}}>
-                      {getPlatinumStreak()>=100?"🎉 100+ days at Platinum!":${100-getPlatinumStreak()} days until 100-day milestone`}
+                      {getPlatinumStreak()>=100?"🎉 100+ days at Platinum!":`${100-getPlatinumStreak()} days until 100-day milestone`}
                     </div>
                   </div>
                 </div>
