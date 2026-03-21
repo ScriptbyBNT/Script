@@ -2840,6 +2840,17 @@ function ScriptHabitz({ onBack, savedData, onSave, scriptAccent }) {
                 </div>
               )}
             </div>
+            {/* Custom Awards — locked note for Bronze/Silver */}
+            {(tier.name==="Bronze"||tier.name==="Silver")&&(
+              <div style={{background:t.isDark?"#25253a":"#fffbeb",border:"1.5px solid #d97706",borderRadius:14,padding:"12px 14px",marginBottom:16,display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontSize:22,flexShrink:0}}>🥇</span>
+                <div>
+                  <div style={{fontSize:13,fontWeight:800,color:"#92400e"}}>Awards unlock at Gold</div>
+                  <div style={{fontSize:11,color:"#a16207",marginTop:2,lineHeight:1.5}}>Reach {TIERS[2].min} pts to unlock custom awards — set your own streak goals and personal rewards for Gold, Platinum & Diamond.</div>
+                </div>
+              </div>
+            )}
+
             {/* Custom Awards */}
             {(tier.name==="Gold"||tier.name==="Platinum"||tier.name==="Diamond")&&awards.filter(a=>a.tier===tier.name||TIERS.findIndex(tr=>tr.name===a.tier)<=TIERS.findIndex(tr=>tr.name===tier.name)).length>0&&(
               <div style={{background:t.card,border:`1.5px solid ${t.cardBorder}`,borderRadius:16,padding:"14px 16px",marginBottom:16}}>
