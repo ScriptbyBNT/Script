@@ -2490,13 +2490,21 @@ function ScriptHabitz({ onBack, savedData, onSave, scriptAccent }) {
   const [nameDraft, setNameDraft] = useState(savedData?.appName||"Script Habitz");
   const [reminderSet, setReminderSet] = useState({});
   const [toastMsg, setToastMsg]   = useState("");
+  const [awards, setAwards]       = useState(savedData?.awards||[
+    {id:1, tier:"Gold",     days:30,  reward:"Movie night 🎬"},
+    {id:2, tier:"Platinum", days:60,  reward:"New shoes 👟"},
+    {id:3, tier:"Diamond",  days:100, reward:"Weekend trip ✈️"},
+  ]);
+  const [showAwardEdit, setShowAwardEdit] = useState(false);
+  const [editingAward, setEditingAward]   = useState(null);
+  const [awardForm, setAwardForm]         = useState({tier:"Gold",days:"",reward:""});
 
   const t = buildTheme(colorKey, isDark);
   const visibleDays = getVisibleDays(startDate);
 
   // Persist to parent whenever key state changes
   useEffect(()=>{
-    if(onSave) onSave({colorKey,isDark,startDate,habits,completions,points,rankHistory,appName});
+    if(onSave) onSave({colorKey,isDark,startDate,habits,completions,points,rankHistory,appName,awards});
   },[habits,completions,points,colorKey,isDark,appName]);
 
   function isLocked(dk) {
@@ -2832,6 +2840,47 @@ function ScriptHabitz({ onBack, savedData, onSave, scriptAccent }) {
                 </div>
               )}
             </div>
+            {/* Custom Awards */}
+            {(tier.name==="Gold"||tier.name==="Platinum"||tier.name==="Diamond")&&awards.filter(a=>a.tier===tier.name||TIERS.findIndex(tr=>tr.name===a.tier)<=TIERS.findIndex(tr=>tr.name===tier.name)).length>0&&(
+              <div style={{background:t.card,border:`1.5px solid ${t.cardBorder}`,borderRadius:16,padding:"14px 16px",marginBottom:16}}>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+                  <div style={{fontSize:13,fontWeight:800,color:t.text}}>🏆 Your Awards</div>
+                  <button onClick={()=>setShowAwardEdit(true)} style={{background:t.primaryLight,border:`1.5px solid ${t.primary}`,borderRadius:8,padding:"4px 10px",color:t.primary,fontSize:11,fontWeight:700,cursor:"pointer"}}>+ Add</button>
+                </div>
+                {awards.map(award=>{
+                  const tierIdx=TIERS.findIndex(tr=>tr.name===award.tier);
+                  const curIdx=TIERS.findIndex(tr=>tr.name===tier.name);
+                  const unlocked=curIdx>=tierIdx;
+                  const streak=getPlatinumStreak();
+                  const daysAtTier=unlocked?Math.max(0,streak):0;
+                  const pct=Math.min(100,Math.round((daysAtTier/award.days)*100));
+                  const earned=daysAtTier>=award.days;
+                  const awardTier=TIERS.find(tr=>tr.name===award.tier)||TIERS[2];
+                  return(
+                    <div key={award.id} style={{marginBottom:10,padding:"10px 12px",borderRadius:12,background:earned?awardTier.bg:t.isDark?"#25253a":"#f8fafc",border:`1.5px solid ${earned?awardTier.bar.split(",")[1]?.trim().slice(0,-1)||"#888":t.cardBorder}`,position:"relative"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10}}>
+                        <div style={{fontSize:26,flexShrink:0}}>{earned?"🏆":awardTier.emoji}</div>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{fontWeight:800,fontSize:13,color:earned?awardTier.color:t.text,display:"flex",alignItems:"center",gap:6}}>
+                            {award.reward}
+                            {earned&&<span style={{fontSize:10,background:awardTier.color,color:"#fff",borderRadius:99,padding:"1px 7px",fontWeight:700}}>EARNED!</span>}
+                          </div>
+                          <div style={{fontSize:10,color:t.textMuted,marginTop:2}}>{award.tier} · {award.days} day streak</div>
+                          {!earned&&<>
+                            <div style={{height:5,background:t.isDark?"#3a3a4a":"#e2e8f0",borderRadius:99,marginTop:6}}>
+                              <div style={{height:"100%",borderRadius:99,background:awardTier.bar,width:pct+"%",transition:"width .4s"}}/>
+                            </div>
+                            <div style={{fontSize:9,color:t.textLight,marginTop:3}}>{daysAtTier}/{award.days} days · {pct}%</div>
+                          </>}
+                        </div>
+                        <button onClick={e=>{e.stopPropagation();setAwardForm({tier:award.tier,days:String(award.days),reward:award.reward});setEditingAward(award);setShowAwardEdit(true);}} style={{background:"none",border:"none",cursor:"pointer",color:t.textMuted,fontSize:13,padding:"2px 4px",flexShrink:0}}>✏️</button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
             {habits.map(habit=>{
               const s=getStreak(habit.id),td=getTotalDone(habit.id);
               const last5Days=getVisibleDays(startDate).slice(0,5);
@@ -2978,6 +3027,54 @@ function ScriptHabitz({ onBack, savedData, onSave, scriptAccent }) {
                 <div style={{position:"absolute",top:3,left:isDark?24:3,width:22,height:22,borderRadius:"50%",background:"#fff",transition:"left 0.2s",boxShadow:"0 1px 4px rgba(0,0,0,0.2)"}}/>
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* AWARD EDIT MODAL */}
+      {showAwardEdit&&(
+        <div onClick={e=>e.target===e.currentTarget&&(setShowAwardEdit(false),setEditingAward(null))} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",zIndex:300,display:"flex",alignItems:"flex-end"}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:"100%",maxWidth:430,background:t.sheetBg,borderRadius:"22px 22px 0 0",padding:"20px 20px 44px"}}>
+            <div style={{width:40,height:4,background:t.cardBorder,borderRadius:99,margin:"0 auto 18px"}}/>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:18}}>
+              <div style={{fontSize:17,fontWeight:900,color:t.text}}>{editingAward?"Edit Award":"New Award"}</div>
+              {editingAward&&<button onClick={()=>{setAwards(prev=>prev.filter(a=>a.id!==editingAward.id));setShowAwardEdit(false);setEditingAward(null);}} style={{background:"#fef2f2",border:"1.5px solid #fca5a5",borderRadius:8,padding:"5px 12px",color:"#ef4444",fontSize:12,fontWeight:700,cursor:"pointer"}}>Delete</button>}
+            </div>
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,color:t.textMuted,fontWeight:700,letterSpacing:"0.5px",marginBottom:8}}>UNLOCK AT TIER</div>
+              <div style={{display:"flex",gap:8}}>
+                {["Gold","Platinum","Diamond"].map(tier2=>{
+                  const tr=TIERS.find(x=>x.name===tier2);
+                  const sel=awardForm.tier===tier2;
+                  return(
+                    <button key={tier2} onClick={()=>setAwardForm(f=>({...f,tier:tier2}))} style={{flex:1,padding:"10px 4px",borderRadius:10,border:`1.5px solid ${sel?tr.bar.split(",")[1]?.trim().slice(0,-1)||"#888":t.cardBorder}`,background:sel?tr.bg:t.card,cursor:"pointer",textAlign:"center"}}>
+                      <div style={{fontSize:20}}>{tr?.emoji}</div>
+                      <div style={{fontSize:11,fontWeight:700,color:sel?tr.color:t.textMuted,marginTop:2}}>{tier2}</div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div style={{marginBottom:14}}>
+              <div style={{fontSize:11,color:t.textMuted,fontWeight:700,letterSpacing:"0.5px",marginBottom:6}}>DAYS AT THAT TIER</div>
+              <input value={awardForm.days} onChange={e=>setAwardForm(f=>({...f,days:e.target.value.replace(/\D/g,"")}))} placeholder="e.g. 30" type="number" min="1" style={{...inp,width:"100%"}}/>
+            </div>
+            <div style={{marginBottom:22}}>
+              <div style={{fontSize:11,color:t.textMuted,fontWeight:700,letterSpacing:"0.5px",marginBottom:6}}>YOUR REWARD 🎁</div>
+              <input value={awardForm.reward} onChange={e=>setAwardForm(f=>({...f,reward:e.target.value}))} placeholder="e.g. Movie night 🎬, New shoes 👟..." style={{...inp,width:"100%"}}/>
+            </div>
+            <button onClick={()=>{
+              if(!awardForm.days||!awardForm.reward.trim()) return;
+              if(editingAward){
+                setAwards(prev=>prev.map(a=>a.id===editingAward.id?{...a,...awardForm,days:parseInt(awardForm.days)}:a));
+              } else {
+                setAwards(prev=>[...prev,{id:Date.now(),tier:awardForm.tier,days:parseInt(awardForm.days),reward:awardForm.reward.trim()}]);
+              }
+              setShowAwardEdit(false); setEditingAward(null); setAwardForm({tier:"Gold",days:"",reward:""});
+              showToast("✓ Award saved!");
+            }} style={{width:"100%",padding:"14px",borderRadius:14,background:t.checkBg,border:"none",color:"#fff",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"inherit",opacity:(!awardForm.days||!awardForm.reward.trim())?0.4:1}}>
+              Save Award
+            </button>
           </div>
         </div>
       )}
