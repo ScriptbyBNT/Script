@@ -2487,6 +2487,7 @@ function ScriptHabitz({ onBack, savedData, onSave, scriptAccent }) {
   const [showThemePicker, setShowThemePicker] = useState(false);
   const [appName, setAppName]     = useState(savedData?.appName||"Script Habitz");
   const [editingName, setEditingName] = useState(false);
+  const [hoverName, setHoverName] = useState(false);
   const [nameDraft, setNameDraft] = useState(savedData?.appName||"Script Habitz");
   const [reminderSet, setReminderSet] = useState({});
   const [toastMsg, setToastMsg]   = useState("");
@@ -2623,9 +2624,11 @@ function ScriptHabitz({ onBack, savedData, onSave, scriptAccent }) {
               />
             ):(
               <div onClick={()=>{setNameDraft(appName);setEditingName(true);}}
+                onMouseEnter={()=>setHoverName(true)} onMouseLeave={()=>setHoverName(false)}
+                onTouchStart={()=>setHoverName(true)} onTouchEnd={()=>setTimeout(()=>setHoverName(false),600)}
                 style={{fontSize:21,fontWeight:900,letterSpacing:"-0.8px",color:"#ffffff",lineHeight:1,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
                 {appName}
-                {!editingName&&<span style={{fontSize:11,opacity:0.5}}>✏️</span>}
+                {hoverName&&<span style={{fontSize:11,opacity:0.5}}>✏️</span>}
               </div>
             )}
             <div style={{fontSize:10,color:"rgba(255,255,255,0.7)",fontWeight:600,letterSpacing:"0.3px",marginTop:2}}>
