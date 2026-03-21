@@ -1566,6 +1566,42 @@ async function markMessagesRead(fromId, toId) {
   await sb.from("messages").update({ read: true }).eq("from_id", fromId).eq("to_id", toId).eq("read", false);
 }
 
+// ── GROUP CHAT HELPERS ──
+async function createGroup(name, createdBy, members) {
+  const { data, error } = await sb.from("groups").insert({
+    name, created_by: createdBy, members
+  }).select().single();
+  return data;
+}
+
+async function loadGroups(userId) {
+  const { data } = await sb.from("groups")
+    .select("*")
+    .contains("members", JSON.stringify([{id: userId}]))
+    .order("created_at", { ascending: false });
+  // Also load groups created by user
+  const { data: mine } = await sb.from("groups")
+    .select("*")
+    .eq("created_by", userId)
+    .order("created_at", { ascending: false });
+  const all = [...(data||[]), ...(mine||[])];
+  const unique = Object.values(Object.fromEntries(all.map(g=>[g.id,g])));
+  return unique;
+}
+
+async function loadGroupMessages(groupId) {
+  const { data } = await sb.from("group_messages")
+    .select("*")
+    .eq("group_id", groupId)
+    .order("created_at", { ascending: true })
+    .limit(200);
+  return data||[];
+}
+
+async function sendGroupMessage(groupId, fromId, fromEmail, content, type="text") {
+  await sb.from("group_messages").insert({ group_id: groupId, from_id: fromId, from_email: fromEmail, content, type });
+}
+
 // ── ChatDrawCanvas — mini chalk inside chat ──
 function ChatDrawCanvas({ onSend, dark }) {
   const [paths, setPaths] = useState([]);
@@ -1886,10 +1922,102 @@ function ExpandedDrawing({ paths, dark, bg }) {
 }
 
 // ── Friends list + messaging hub ──
+// ── Group Chat Window ──
+function GroupChatWindow({ group, myId, myEmail, dark, onClose }) {
+  const [msgs, setMsgs] = useState([]);
+  const [input, setInput] = useState("");
+  const [sending, setSending] = useState(false);
+  const bottomRef = useRef(null);
+  const pollRef = useRef(null);
+  const msgsRef = useRef([]);
+  const cacheKey = "grp_msgs_"+group.id;
+  const bg=dark?"#1C1C1E":"#F5F0EE", bg2=dark?"#2C2C2E":"#fff", bdr=dark?"#3A3A3C":C.bd, txt=dark?"#F2F2F7":C.k;
+
+  const load = async (scroll=false) => {
+    const data = await loadGroupMessages(group.id);
+    const newJson = JSON.stringify(data.map(m=>m.id));
+    const oldJson = JSON.stringify(msgsRef.current.map(m=>m.id));
+    if(newJson !== oldJson) {
+      msgsRef.current = data; setMsgs(data);
+      try{ localStorage.setItem(cacheKey, JSON.stringify(data)); }catch(e){}
+      if(scroll) setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),50);
+    }
+  };
+
+  useEffect(()=>{
+    try{ const cached=localStorage.getItem(cacheKey); if(cached){ const d=JSON.parse(cached); msgsRef.current=d; setMsgs(d); setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),50); } }catch(e){}
+    load(true);
+    pollRef.current=setInterval(()=>load(false),6000);
+    return()=>clearInterval(pollRef.current);
+  },[group.id]);
+
+  const send = async () => {
+    if(!input.trim()) return;
+    const txt2=input.trim(); setInput(""); setSending(true);
+    const opt={id:"opt_"+Date.now(),group_id:group.id,from_id:myId,from_email:myEmail,content:{text:txt2},type:"text",created_at:new Date().toISOString()};
+    msgsRef.current=[...msgsRef.current,opt]; setMsgs([...msgsRef.current]);
+    setTimeout(()=>bottomRef.current?.scrollIntoView({behavior:"smooth"}),50);
+    await sendGroupMessage(group.id,myId,myEmail,{text:txt2},"text");
+    setSending(false); await load(false);
+  };
+
+  const members = group.members||[];
+  return(
+    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
+      {/* Header */}
+      <div style={{background:dark?"#2C2C2E":"#fff",borderBottom:"1.5px solid "+bdr,padding:"10px 14px",flexShrink:0}}>
+        <div style={{display:"flex",alignItems:"center",gap:10}}>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:22,fontWeight:900,padding:0,lineHeight:1}}>‹</button>
+          <div style={{width:36,height:36,borderRadius:10,background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,color:"#fff",flexShrink:0}}>👥</div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontWeight:800,fontSize:15,color:txt,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{group.name}</div>
+            <div style={{fontSize:10,color:dark?"#8E8E93":C.g}}>{members.length} member{members.length!==1?"s":""}</div>
+          </div>
+        </div>
+      </div>
+      {/* Messages */}
+      <div style={{flex:1,overflowY:"auto",padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+        {msgs.map(m=>{
+          const isMe=m.from_id===myId||m.from_email===myEmail;
+          const name=m.from_email?.split("@")[0]||"?";
+          return(
+            <div key={m.id} style={{display:"flex",flexDirection:"column",alignItems:isMe?"flex-end":"flex-start",maxWidth:"80%",alignSelf:isMe?"flex-end":"flex-start"}}>
+              {!isMe&&<div style={{fontSize:10,color:dark?"#8E8E93":C.g,marginBottom:2,fontWeight:600}}>{name}</div>}
+              <div style={{background:isMe?C.r:(dark?"#2C2C2E":"#fff"),borderRadius:isMe?"18px 18px 4px 18px":"18px 18px 18px 4px",padding:"10px 13px",border:isMe?"none":"1.5px solid "+bdr}}>
+                <div style={{fontSize:14,color:isMe?"#fff":txt,lineHeight:1.5,wordBreak:"break-word"}}>{m.content?.text}</div>
+              </div>
+              <div style={{fontSize:9,color:dark?"#636366":C.g,marginTop:2}}>{new Date(m.created_at).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}</div>
+            </div>
+          );
+        })}
+        <div ref={bottomRef}/>
+      </div>
+      {/* Input */}
+      <div style={{background:dark?"#2C2C2E":"#fff",borderTop:"1.5px solid "+bdr,padding:"10px 12px",display:"flex",gap:8,alignItems:"flex-end",flexShrink:0}}>
+        <textarea value={input} onChange={e=>setInput(e.target.value)}
+          onKeyDown={e=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); send(); } }}
+          placeholder="Message group..." rows={1}
+          style={{flex:1,padding:"10px 13px",borderRadius:12,border:"1.5px solid "+bdr,fontSize:16,outline:"none",resize:"none",background:dark?"#3A3A3C":"#F5F0EE",color:txt,fontFamily:"'Nunito',sans-serif",lineHeight:1.4,maxHeight:100,overflowY:"auto"}}
+        ></textarea>
+        <button onClick={send} disabled={!input.trim()||sending} style={{width:40,height:40,borderRadius:12,background:input.trim()?C.r:"#ddd",border:"none",cursor:input.trim()?"pointer":"default",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+
 function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
   const [profile, setProfile] = useState(null);
   const [friends, setFriends] = useState([]);
   const [activeFriend, setActiveFriend] = useState(null);
+  const [activeGroup, setActiveGroup] = useState(null);
+  const [groups, setGroups] = useState([]);
+  const [msgTab, setMsgTab] = useState("chats"); // "chats" | "groups" | "friends"
+  const [showNewGroup, setShowNewGroup] = useState(false);
+  const [newGroupName, setNewGroupName] = useState("");
+  const [selectedMembers, setSelectedMembers] = useState([]);
   const [blockedUsers, setBlockedUsers] = useState([]);
   const [editName, setEditName] = useState(false);
   const [nameVal, setNameVal] = useState("");
@@ -1940,6 +2068,7 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
     };
 
     buildContacts();
+    loadGroups(userId).then(setGroups);
   },[userId, userEmail]);
 
   // Poll unread counts
@@ -1959,6 +2088,26 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
   },[friends,userId]);
 
   const saveFriends=async(list)=>{ setFriends(list); await dbSave(userId,"friends",list); };
+
+  const handleCreateGroup=async()=>{
+    if(!newGroupName.trim()||selectedMembers.length===0) return;
+    const memberObjs=[{id:userId,email:userEmail},...selectedMembers];
+    const group=await createGroup(newGroupName.trim(),userId,memberObjs);
+    if(group){ setGroups(prev=>[group,...prev]); setShowNewGroup(false); setNewGroupName(""); setSelectedMembers([]); setActiveGroup(group); }
+  };
+
+  const deleteConversation=async(friend)=>{
+    // Remove from friends list (conversation disappears, messages stay on server)
+    await saveFriends(friends.filter(f=>f.email!==friend.email));
+    // Clear local cache
+    try{ localStorage.removeItem("msgs_"+userId+"_"+(friend.email||friend.id)); }catch(e){}
+  };
+
+  const leaveGroup=async(group)=>{
+    const updated={...group,members:(group.members||[]).filter(m=>m.id!==userId)};
+    await sb.from("groups").update({members:updated.members}).eq("id",group.id);
+    setGroups(prev=>prev.filter(g=>g.id!==group.id));
+  };
 
   const blockUser=async(email)=>{
     const updated=[...blockedUsers.filter(b=>b!==email),email];
@@ -1982,6 +2131,9 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
 
   const handleSaveToChalk=async(data)=>{ await onSaveToChalk(data); };
 
+  if(activeGroup) return(
+    <GroupChatWindow group={activeGroup} myId={userId} myEmail={userEmail} dark={dark} onClose={()=>setActiveGroup(null)}/>
+  );
   if(activeFriend) return(
     <ChatWindow myId={userId} myEmail={userEmail} myUsername={profile?.username||userEmail} friend={activeFriend} dark={dark}
       onSaveToChalk={handleSaveToChalk} onClose={()=>setActiveFriend(null)}/>
@@ -2013,6 +2165,97 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
         </div>
       </div>
       {/* Add friend */}
+      {/* Tabs */}
+      <div style={{display:"flex",gap:6,flexShrink:0,marginBottom:4}}>
+        {[["chats","💬 Chats"],["groups","👥 Groups"],["friends","👤 Friends"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setMsgTab(id)} style={{flex:1,padding:"8px 4px",borderRadius:10,border:"1.5px solid "+(msgTab===id?C.r:bdr),background:msgTab===id?C.r+"18":bg2,color:msgTab===id?C.r:sub,fontSize:12,fontWeight:700,cursor:"pointer"}}>{label}</button>
+        ))}
+      </div>
+
+      {/* CHATS TAB */}
+      {msgTab==="chats"&&<>
+        {loaded&&friends.filter(f=>!blockedUsers.includes(f.email)).length===0&&<div style={{textAlign:"center",color:sub,padding:30,fontSize:14}}>No conversations yet. Share something to start one!</div>}
+        <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
+          {friends.filter(f=>!blockedUsers.includes(f.email)).map(f=>{ const swiped=swipedId===f.id||swipedId===f.email; const setSwiped=(v)=>setSwipedId(v?(f.id||f.email):null); return(
+            <div key={f.id} style={{position:"relative",overflow:"hidden",borderRadius:14}}>
+              <div style={{position:"absolute",right:0,top:0,bottom:0,width:160,display:"flex",alignItems:"center",justifyContent:"flex-end",gap:0}}>
+                <button onClick={async e=>{e.stopPropagation();if(window.confirm("Delete conversation with "+f.email+"?")){await deleteConversation(f);setSwiped(false);}}} style={{background:"#ff3b30",height:"100%",width:80,border:"none",color:"#fff",fontSize:12,fontWeight:800,cursor:"pointer"}}>Delete</button>
+                <button onClick={e=>{e.stopPropagation();if(window.confirm("Block "+(f.nickname||f.email)+"?")){blockUser(f.email);}}} style={{background:"#ff9500",height:"100%",width:80,border:"none",color:"#fff",fontSize:12,fontWeight:800,cursor:"pointer"}}>Block</button>
+              </div>
+              <div onClick={()=>{ if(swiped){setSwiped(false);return;} setActiveFriend({...f,email:f.email||""}); }}
+                onTouchStart={e=>{ touchStartX.current=e.touches[0].clientX; }}
+                onTouchEnd={e=>{ const dx=e.changedTouches[0].clientX-touchStartX.current; if(dx<-40) setSwiped(true); else if(dx>20) setSwiped(false); }}
+                style={{transform:swiped?"translateX(-160px)":"translateX(0)",transition:"transform .2s",background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+                <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0,position:"relative"}}>
+                  {(f.nickname||f.username||f.email)?.[0]?.toUpperCase()}
+                  {unread[f.id]>0&&<div style={{position:"absolute",top:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"#ff3b30",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#fff"}}>{unread[f.id]}</div>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:14,color:txt}}>{f.nickname||f.username||f.email.split("@")[0]}</div>
+                  <div style={{fontSize:11,color:sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.email}</div>
+                </div>
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="9 18 15 12 9 6"/></svg>
+                <button onClick={e=>{e.stopPropagation(); const nn=window.prompt("Nickname for "+f.email+":",f.nickname||f.username||f.email.split("@")[0]); if(nn!==null){
+                  const trimmed=nn.trim();
+                  if(trimmed){const conflict=friends.find(x=>x.email!==f.email&&x.nickname&&x.nickname.trim().toLowerCase()===trimmed.toLowerCase()); if(conflict){alert("Nickname taken.");} else{const updated=friends.map(x=>x.email===f.email?{...x,nickname:trimmed}:x); saveFriends(updated);}} else{const updated=friends.map(x=>x.email===f.email?{...x,nickname:undefined}:x); saveFriends(updated);}
+                }}} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 6px"}}>✏</button>
+              </div>
+            </div>
+          );})}
+        </div>
+      </>}
+
+      {/* GROUPS TAB */}
+      {msgTab==="groups"&&<>
+        <button onClick={()=>setShowNewGroup(true)} style={{...btn(C.r),width:"100%",borderRadius:12,padding:"11px",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center",gap:8,flexShrink:0}}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          New Group
+        </button>
+        <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8,marginTop:8}}>
+          {groups.length===0&&<div style={{textAlign:"center",color:sub,padding:30,fontSize:14}}>No groups yet. Create one!</div>}
+          {groups.map(g=>(
+            <div key={g.id} onClick={()=>setActiveGroup(g)} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
+              <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>👥</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:14,color:txt}}>{g.name}</div>
+                <div style={{fontSize:11,color:sub}}>{(g.members||[]).length} member{(g.members||[]).length!==1?"s":""}</div>
+              </div>
+              <button onClick={e=>{e.stopPropagation();if(window.confirm("Leave "+g.name+"?")){leaveGroup(g);}}} style={{background:"none",border:"none",cursor:"pointer",color:"#ff3b30",fontSize:11,fontWeight:700,padding:"4px 6px"}}>Leave</button>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+            </div>
+          ))}
+        </div>
+      </>}
+
+      {/* FRIENDS TAB */}
+      {msgTab==="friends"&&<>
+        <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
+          {friends.length===0&&<div style={{textAlign:"center",color:sub,padding:30,fontSize:14}}>No contacts yet. Share something with someone to add them!</div>}
+          {friends.filter(f=>!blockedUsers.includes(f.email)).map(f=>(
+            <div key={f.id||f.email} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12}}>
+              <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0}}>
+                {(f.nickname||f.username||f.email)?.[0]?.toUpperCase()}
+              </div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:14,color:txt}}>{f.nickname||f.username||f.email.split("@")[0]}</div>
+                <div style={{fontSize:11,color:sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.email}</div>
+              </div>
+              <button onClick={()=>{ setActiveFriend({...f,email:f.email||""}); setMsgTab("chats"); }} style={{...btn(C.r),fontSize:11,padding:"6px 12px",borderRadius:8}}>Message</button>
+            </div>
+          ))}
+          {blockedUsers.length>0&&<>
+            <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginTop:8}}>Blocked</div>
+            {blockedUsers.map(email=>(
+              <div key={email} style={{background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"12px 15px",display:"flex",alignItems:"center",gap:12,opacity:0.6}}>
+                <div style={{width:36,height:36,borderRadius:"50%",background:"#8E8E93",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff",flexShrink:0}}>{email[0]?.toUpperCase()}</div>
+                <div style={{flex:1,fontSize:13,color:sub}}>{email}</div>
+                <button onClick={()=>unblockUser(email)} style={{background:"none",border:"1.5px solid "+bdr,borderRadius:8,padding:"5px 10px",fontSize:11,fontWeight:700,color:sub,cursor:"pointer"}}>Unblock</button>
+              </div>
+            ))}
+          </>}
+        </div>
+      </>}
+
       {/* Shared items section */}
       {sharedItems.length>0&&(
         <div style={{flexShrink:0}}>
@@ -2048,44 +2291,39 @@ function Messages({ userId, userEmail, dark, onSaveToChalk, onAcceptShared }) {
           </div>
         </div>
       )}
-      {/* Friends list */}
-      <div style={{flex:1,overflowY:"auto",display:"flex",flexDirection:"column",gap:8}}>
-        {!loaded&&<Spinner msg="Loading..."/>}
-        {loaded&&friends.filter(f=>!blockedUsers.includes(f.email)).length===0&&sharedItems.length===0&&<div style={{textAlign:"center",color:sub,padding:40,fontSize:14}}>Share something with someone to start a conversation!</div>}
-        {friends.filter(f=>!blockedUsers.includes(f.email)).map(f=>{ const swiped=swipedId===f.id||swipedId===f.email; const setSwiped=(v)=>setSwipedId(v?(f.id||f.email):null); return(
-          <div key={f.id} style={{position:"relative",overflow:"hidden",borderRadius:14,marginBottom:0}}>
-            <div style={{position:"absolute",right:0,top:0,bottom:0,width:80,background:"#ff3b30",display:"flex",alignItems:"center",justifyContent:"center",borderRadius:"0 14px 14px 0"}}>
-              <button onClick={async e=>{ e.stopPropagation(); await dbSave(userId,"friends",friends.filter(x=>x.email!==f.email)); setFriends(friends.filter(x=>x.email!==f.email)); }} style={{background:"none",border:"none",color:"#fff",fontSize:13,fontWeight:800,cursor:"pointer"}}>Delete</button>
+
+      {/* New Group Modal */}
+      {showNewGroup&&(
+        <div onClick={e=>e.target===e.currentTarget&&setShowNewGroup(false)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,.55)",zIndex:600,display:"flex",alignItems:"flex-end"}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:bg2,borderRadius:"22px 22px 0 0",width:"100%",padding:"20px 20px 40px",maxHeight:"85vh",overflowY:"auto"}}>
+            <div style={{display:"flex",justifyContent:"center",marginBottom:16}}><div style={{width:40,height:4,borderRadius:2,background:bdr}}/></div>
+            <div style={{fontWeight:900,fontSize:17,color:txt,marginBottom:16}}>New Group</div>
+            <div style={{marginBottom:12}}>
+              <div style={{fontSize:12,color:sub,marginBottom:6,fontWeight:700}}>GROUP NAME</div>
+              <input value={newGroupName} onChange={e=>setNewGroupName(e.target.value)} placeholder="e.g. Family, Work Team..." style={{background:bg2,border:"1.5px solid "+bdr,borderRadius:10,padding:"11px 13px",color:txt,fontSize:16,outline:"none",fontFamily:"inherit",width:"100%"}}/>
             </div>
-            <div onClick={()=>{ if(swiped){setSwiped(false);return;} setActiveFriend({...f, email: f.email||""}); }}
-              onTouchStart={e=>{ touchStartX.current=e.touches[0].clientX; }}
-              onTouchEnd={e=>{ const dx=e.changedTouches[0].clientX-touchStartX.current; if(dx<-40) setSwiped(true); else if(dx>20) setSwiped(false); }}
-              style={{transform:swiped?"translateX(-80px)":"translateX(0)",transition:"transform .2s",background:bg2,borderRadius:14,border:"1.5px solid "+bdr,padding:"13px 15px",display:"flex",alignItems:"center",gap:12,cursor:"pointer"}}>
-            <div style={{width:42,height:42,borderRadius:"50%",background:C.r,display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:900,color:"#fff",flexShrink:0,position:"relative"}}>
-              {(f.username||f.email)?.[0]?.toUpperCase()}
-              {unread[f.id]>0&&<div style={{position:"absolute",top:-2,right:-2,width:16,height:16,borderRadius:"50%",background:"#ff3b30",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,fontWeight:900,color:"#fff"}}>{unread[f.id]}</div>}
+            <div style={{marginBottom:16}}>
+              <div style={{fontSize:12,color:sub,marginBottom:8,fontWeight:700}}>ADD MEMBERS ({selectedMembers.length} selected)</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:200,overflowY:"auto"}}>
+                {friends.filter(f=>!blockedUsers.includes(f.email)).map(f=>{
+                  const sel=selectedMembers.find(m=>m.email===f.email);
+                  return(
+                    <div key={f.email} onClick={()=>{ if(sel) setSelectedMembers(prev=>prev.filter(m=>m.email!==f.email)); else setSelectedMembers(prev=>[...prev,{id:f.id||"p_"+f.email,email:f.email}]); }} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:10,border:"1.5px solid "+(sel?C.r:bdr),background:sel?C.r+"18":bg2,cursor:"pointer"}}>
+                      <div style={{width:32,height:32,borderRadius:"50%",background:sel?C.r:"#8E8E93",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:"#fff",flexShrink:0}}>{(f.nickname||f.email||"?")[0]?.toUpperCase()}</div>
+                      <div style={{flex:1,fontSize:14,fontWeight:600,color:txt}}>{f.nickname||f.username||f.email.split("@")[0]}</div>
+                      {sel&&<span style={{color:C.r,fontWeight:900,fontSize:16}}>✓</span>}
+                    </div>
+                  );
+                })}
+                {friends.filter(f=>!blockedUsers.includes(f.email)).length===0&&<div style={{textAlign:"center",color:sub,padding:20,fontSize:13}}>Add contacts by sharing with them first.</div>}
+              </div>
             </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:14,color:txt}}>{f.nickname||f.username||f.email.split("@")[0]}</div>
-              <div style={{fontSize:11,color:sub,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{f.email}</div>
-            </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={sub} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{flexShrink:0}}><polyline points="9 18 15 12 9 6"/></svg>
-            <button onClick={e=>{e.stopPropagation(); const nn=window.prompt("Nickname for "+f.email+":",f.nickname||f.username||f.email.split("@")[0]); if(nn!==null){
-              const trimmed = nn.trim();
-              if(trimmed) {
-                // Check uniqueness
-                const conflict = friends.find(x=>x.email!==f.email && x.nickname && x.nickname.trim().toLowerCase()===trimmed.toLowerCase());
-                if(conflict){ alert("Nickname already used for "+conflict.email+". Choose a different one."); }
-                else { const updated=friends.map(x=>x.email===f.email?{...x,nickname:trimmed}:x); saveFriends(updated); }
-              } else {
-                const updated=friends.map(x=>x.email===f.email?{...x,nickname:undefined}:x); saveFriends(updated);
-              }
-            }}} style={{background:"none",border:"none",cursor:"pointer",color:C.r,fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 6px"}}>✏</button>
-            <button onClick={e=>{e.stopPropagation();if(window.confirm("Block "+f.email+"? They cannot message you.")){blockUser(f.email);}}} style={{background:"none",border:"none",cursor:"pointer",color:"#ff3b30",fontSize:11,fontWeight:700,flexShrink:0,padding:"4px 6px"}}>Block</button>
-            </div>
+            <button onClick={handleCreateGroup} disabled={!newGroupName.trim()||selectedMembers.length===0} style={{...btn(C.r),width:"100%",opacity:(!newGroupName.trim()||selectedMembers.length===0)?0.4:1}}>
+              Create Group ({selectedMembers.length} member{selectedMembers.length!==1?"s":""})
+            </button>
           </div>
-        );})}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -3048,10 +3286,7 @@ export default function Script() {
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
           <button onClick={()=>setShowHabitz(true)} style={{background:"#3b82f6",border:"none",borderRadius:16,padding:"4px 10px",cursor:"pointer",color:"#fff",fontSize:11,fontWeight:800}}>Habitz</button>
-          <button onClick={()=>setShowChat(true)} style={{display:"flex",alignItems:"center",gap:4,background:C.r,border:"none",borderRadius:16,padding:"4px 10px",cursor:"pointer",color:"#fff",fontSize:11,fontWeight:800}}>
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            Scrypt Chat
-          </button>
+          <button onClick={()=>setShowChat(true)} style={{display:"flex",alignItems:"center",gap:3,background:C.r,border:"none",borderRadius:16,padding:"4px 9px",cursor:"pointer",color:"#fff",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Scrypt Chat</button>
           <button onClick={()=>setShowInbox(true)} style={{position:"relative",background:"none",border:"none",cursor:"pointer",padding:4}}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={D.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             {inbox.filter(i=>!i.read).length>0&&<div style={{position:"absolute",top:2,right:2,width:8,height:8,borderRadius:"50%",background:C.r}}/>}
