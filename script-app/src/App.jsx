@@ -2460,8 +2460,16 @@ function TimePicker({ value, onChange, t }) {
   );
 }
 
-function ScriptHabitz({ onBack, savedData, onSave }) {
-  const [colorKey, setColorKey]   = useState(savedData?.colorKey||"blue");
+function ScriptHabitz({ onBack, savedData, onSave, scriptAccent }) {
+  function accentToColorKey(hex) {
+    if(!hex) return "blue";
+    const h = hex.toLowerCase();
+    if(h.includes("ef4444")||h.includes("c8220a")||h.includes("7b1c2e")||h.includes("b5174a")||h.includes("e0006a")) return "red";
+    if(h.includes("22c55e")||h.includes("1b6b35")||h.includes("00838f")) return "green";
+    if(h.includes("ec4899")||h.includes("e0006a")) return "pink";
+    return "blue";
+  }
+  const [colorKey, setColorKey] = useState(savedData?.colorKey || accentToColorKey(scriptAccent) || "blue");
   const [isDark, setIsDark]       = useState(savedData?.isDark||false);
   const [startDate]               = useState(savedData?.startDate||dateKey(today));
   const [habits, setHabits]       = useState(savedData?.habits||INITIAL_HABITS);
@@ -2986,15 +2994,46 @@ function ScriptHabitz({ onBack, savedData, onSave }) {
 // ── SETTINGS ──
 function Settings({ user, dark, setDark, accent, onAccent, onClose }) {
   const [tab,setTab]=useState("account");
-
-
+  const [notifSettings,setNotifSettings]=useState({messages:true,shared_items:true,appointments:true,medications:true,habitz:true});
+  const [pushEnabled,setPushEnabled]=useState(false);
+  const [pushLoading,setPushLoading]=useState(false);
+  const [pushError,setPushError]=useState("");
 
   useEffect(()=>{
     loadNotifSettings(user.id).then(s=>{ if(s) setNotifSettings(s); });
-},[user.id]);
+    if("serviceWorker" in navigator){
+      navigator.serviceWorker.getRegistration("/sw.js").then(reg=>{
+        reg?.pushManager?.getSubscription?.().then(sub=>setPushEnabled(!!sub));
+      }).catch(()=>{});
+    }
+  },[user.id]);
 
+  const saveNotifSetting=async(key,val)=>{
+    const updated={...notifSettings,[key]:val};
+    setNotifSettings(updated);
+    await dbSave(user.id,"notif_settings",updated);
+  };
 
-
+  const togglePush=async()=>{
+    setPushLoading(true); setPushError("");
+    try{
+      if(pushEnabled){
+        const reg=await navigator.serviceWorker.getRegistration("/sw.js");
+        const sub=await reg?.pushManager?.getSubscription?.();
+        await sub?.unsubscribe?.();
+        await sb.from("push_subscriptions").delete().eq("user_id",user.id);
+        setPushEnabled(false);
+      } else {
+        if(!("serviceWorker" in navigator)){setPushError("Service workers not supported in this browser.");setPushLoading(false);return;}
+        if(!("PushManager" in window)){setPushError("Push notifications not supported in this browser.");setPushLoading(false);return;}
+        if(Notification.permission==="denied"){setPushError("Notifications blocked. Go to browser Settings > Notifications and allow this site.");setPushLoading(false);return;}
+        const sub=await registerPush(user.id);
+        if(sub){ setPushEnabled(true); }
+        else { setPushError("Could not enable — tap Allow if your browser asks, or check site notification permissions."); }
+      }
+    }catch(e){ setPushError("Error: "+e.message); }
+    setPushLoading(false);
+  };
 
   const [newEmail,setNewEmail]=useState("");
   const [newPass,setNewPass]=useState("");
@@ -3082,38 +3121,44 @@ function Settings({ user, dark, setDark, accent, onAccent, onClose }) {
               </div>
             </>
           )}
-          {tab==="notifications"&&(
-            <div style={{display:"flex",flexDirection:"column",gap:12}}>
-              <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
-                <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>Habitz Reminders</div>
-                <div style={{fontSize:13,color:sub,lineHeight:1.6,marginBottom:10}}>
-                  Habit reminder times are set inside Habitz when adding or editing a habit. To receive alerts, enable notifications in your browser/device settings.
+          {tab==="notifications"&&<>
+            <div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
+              <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Push Notifications</div>
+              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                <div>
+                  <div style={{fontSize:14,fontWeight:700,color:txt}}>Enable on this device</div>
+                  <div style={{fontSize:12,color:sub,marginTop:2}}>Alerts on lock screen when app is closed</div>
                 </div>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderTop:"1px solid "+bdr}}>
-                  <div>
-                    <div style={{fontSize:14,fontWeight:700,color:txt}}>🏃 Habitz Reminders</div>
-                    <div style={{fontSize:11,color:sub,marginTop:2}}>Set per-habit reminder times inside Habitz</div>
-                  </div>
-                  <button onClick={()=>{ if("Notification" in window){ Notification.requestPermission().then(p=>{ if(p==="granted") setMsg("✓ Habitz notifications enabled!"); else setErr("Blocked — enable in device Settings > Notifications > Safari/Browser"); }); } else setErr("Notifications not supported in this browser"); }} style={{background:C.r,border:"none",borderRadius:10,padding:"8px 14px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                    Enable
+                <button onClick={togglePush} disabled={pushLoading} style={{width:50,height:28,borderRadius:14,background:pushEnabled?C.r:"#E5E5EA",border:"none",cursor:"pointer",position:"relative",transition:"background .2s",opacity:pushLoading?0.6:1}}>
+                  <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:pushEnabled?25:3,transition:"left .2s"}}/>
+                </button>
+              </div>
+              {pushError&&<div style={{fontSize:12,color:"#ff3b30",background:"rgba(255,59,48,.08)",borderRadius:8,padding:"10px 12px"}}>{pushError}</div>}
+              {!pushEnabled&&!pushError&&<div style={{fontSize:11,color:sub,background:bg,borderRadius:8,padding:"8px 10px"}}>Tap the toggle, then tap Allow when your browser asks. Must be saved to home screen for lock screen alerts.</div>}
+            </div>
+            {pushEnabled&&<>
+            <div style={{background:bg2,borderRadius:14,padding:"14px 16px",display:"flex",flexDirection:"column",gap:14}}>
+              <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase"}}>Alert me for</div>
+              {[["messages","💬 New messages"],["shared_items","📥 Items shared with me"],["appointments","📅 Appointment reminders"],["medications","💊 Medication reminders"],["habitz","🏃 Habitz habit reminders"]].map(([key,label])=>(
+                <div key={key} style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+                  <div style={{fontSize:14,color:txt,fontWeight:500}}>{label}</div>
+                  <button onClick={()=>saveNotifSetting(key,!notifSettings[key])} style={{width:50,height:28,borderRadius:14,background:notifSettings[key]?C.r:"#E5E5EA",border:"none",cursor:"pointer",position:"relative",transition:"background .2s"}}>
+                    <div style={{width:22,height:22,borderRadius:"50%",background:"#fff",position:"absolute",top:3,left:notifSettings[key]?25:3,transition:"left .2s"}}/>
                   </button>
                 </div>
-              </div>
-              <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
-                <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>How it works</div>
-                <div style={{fontSize:13,color:sub,lineHeight:1.7}}>
-                  1. Open <strong style={{color:txt}}>Habitz</strong> and add or edit a habit<br/>
-                  2. Set a reminder time using the time picker<br/>
-                  3. Tap <strong style={{color:txt}}>"Set Reminder"</strong> inside the habit card<br/>
-                  4. Your browser will alert you at that time
-                </div>
-              </div>
-              <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
-                <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Other Script Notifications</div>
-                <div style={{fontSize:13,color:sub,lineHeight:1.6}}>Push notifications for messages, shared items, and calendar reminders are available when Script is saved to your home screen (Add to Home Screen in Safari).</div>
+              ))}
+            </div>
+            <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
+              <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>How to set reminders</div>
+              <div style={{fontSize:12,color:sub,lineHeight:1.7}}>
+                🏃 <span style={{fontWeight:700,color:txt}}>Habitz</span> — add or edit a habit and set a reminder time, then tap "Set Reminder" on the habit card.<br/>
+                📅 <span style={{fontWeight:700,color:txt}}>Calendar</span> — tap any day and use the reminder option.<br/>
+                💊 <span style={{fontWeight:700,color:txt}}>Medications</span> — edit a med and set a reminder time.<br/>
+                🏥 <span style={{fontWeight:700,color:txt}}>Appointments</span> — edit an appointment and set a reminder time.
               </div>
             </div>
-          )}
+            </>}
+          </>}
           {err&&<div style={{color:"#ff6060",fontSize:13,background:"rgba(255,80,80,.08)",borderRadius:10,padding:"10px 14px"}}>{err}</div>}
           {msg&&<div style={{color:"#34c759",fontSize:13,background:"rgba(52,199,89,.08)",borderRadius:10,padding:"10px 14px"}}>{msg}</div>}
         </div>
@@ -3311,7 +3356,7 @@ export default function Script() {
           <span style={{fontSize:11,color:D.sub,fontWeight:600}}>{new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
         </div>
         <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <button onClick={()=>setShowHabitz(true)} style={{background:"#3b82f6",border:"none",borderRadius:16,padding:"4px 10px",cursor:"pointer",color:"#fff",fontSize:11,fontWeight:800}}>Habitz</button>
+          <button onClick={()=>setShowHabitz(true)} style={{background:C.r,border:"none",borderRadius:16,padding:"4px 10px",cursor:"pointer",color:"#fff",fontSize:11,fontWeight:800}}>Habitz</button>
           <button onClick={()=>setShowChat(true)} style={{display:"flex",alignItems:"center",gap:3,background:C.r,border:"none",borderRadius:16,padding:"4px 9px",cursor:"pointer",color:"#fff",fontSize:10,fontWeight:800,whiteSpace:"nowrap"}}><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Scrypt Chat</button>
           <button onClick={()=>setShowInbox(true)} style={{position:"relative",background:"none",border:"none",cursor:"pointer",padding:4}}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={D.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
@@ -3369,6 +3414,7 @@ export default function Script() {
             onBack={()=>setShowHabitz(false)}
             savedData={habitzData}
             onSave={saveHabitzData}
+            scriptAccent={accent}
           />
         </div>
       )}
