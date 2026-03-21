@@ -2376,8 +2376,9 @@ function ScriptHabitz({ onBack, savedData, onSave }) {
               />
             ):(
               <div onClick={()=>{setNameDraft(appName);setEditingName(true);}}
-                style={{fontSize:21,fontWeight:900,letterSpacing:"-0.8px",color:"#ffffff",lineHeight:1,cursor:"pointer"}}>
-                {appName} <span style={{fontSize:11,opacity:0.6}}>✏️</span>
+                style={{fontSize:21,fontWeight:900,letterSpacing:"-0.8px",color:"#ffffff",lineHeight:1,cursor:"pointer",display:"flex",alignItems:"center",gap:6}}>
+                {appName}
+                {!editingName&&<span style={{fontSize:11,opacity:0.5}}>✏️</span>}
               </div>
             )}
             <div style={{fontSize:10,color:"rgba(255,255,255,0.7)",fontWeight:600,letterSpacing:"0.3px",marginTop:2}}>
@@ -2694,8 +2695,11 @@ function ScriptHabitz({ onBack, savedData, onSave }) {
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",zIndex:200,display:"flex",alignItems:"flex-end",justifyContent:"center"}}
           onClick={e=>{if(e.target===e.currentTarget)setShowThemePicker(false);}}>
           <div style={{width:"100%",maxWidth:430,background:t.sheetBg,borderRadius:"24px 24px 0 0",padding:"20px 20px 40px"}}>
-            <div style={{width:40,height:4,background:t.cardBorder,borderRadius:99,margin:"0 auto 20px"}}/>
-            <div style={{fontSize:17,fontWeight:900,marginBottom:6,color:t.text}}>Choose Theme</div>
+            <div style={{width:40,height:4,background:t.cardBorder,borderRadius:99,margin:"0 auto 16px"}}/>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
+              <div style={{fontSize:17,fontWeight:900,color:t.text}}>Choose Theme</div>
+              <button onClick={()=>setShowThemePicker(false)} style={{background:t.isDark?"#25253a":"#f1f5f9",border:"none",borderRadius:8,width:28,height:28,cursor:"pointer",color:t.textMuted,fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700}}>✕</button>
+            </div>
             <div style={{fontSize:11,color:t.textMuted,marginBottom:18}}>Pick a color · toggle dark mode</div>
             <div style={{marginBottom:20,padding:"13px 16px",borderRadius:14,background:t.isDark?"#25253a":"#f8fafc",border:`1.5px solid ${t.cardBorder}`}}>
               <div style={{fontSize:10,color:t.textMuted,fontWeight:700,letterSpacing:"0.5px",marginBottom:8}}>APP NAME</div>
@@ -3037,14 +3041,17 @@ export default function Script() {
       <style>{`input,select,textarea{font-size:16px!important;}`}</style>
       {dark&&<style>{`input,select,textarea{background:#2C2C2E !important;color:#F2F2F7 !important;border-color:#3A3A3C !important;}input::placeholder,textarea::placeholder{color:#636366 !important;}`}</style>}
       <div style={{background:D.headerBg,borderBottom:"1.5px solid "+D.border,padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",flexShrink:0}}>
-        <div style={{display:"flex",alignItems:"center",gap:9}}> 
+        <div style={{display:"flex",alignItems:"center",gap:9}}>
           <div style={{width:30,height:30,borderRadius:8,background:C.r,display:"flex",alignItems:"center",justifyContent:"center"}}><ScrollIcon sz={18} white={true}/></div>
           <span style={{fontFamily:"'Nunito',sans-serif",fontSize:20,fontWeight:900,color:C.r,letterSpacing:-0.5}}>Script</span>
           <span style={{fontSize:11,color:D.sub,fontWeight:600}}>{new Date().toLocaleDateString("en-US",{month:"short",day:"numeric"})}</span>
-          <button onClick={()=>setShowHabitz(true)} style={{background:"#3b82f6",border:"none",borderRadius:16,padding:"4px 9px",cursor:"pointer",color:"#fff",fontSize:11,fontWeight:800}}>Habitz</button>
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <button onClick={()=>setShowChat(true)} style={{background:C.r,border:"none",borderRadius:16,padding:"4px 9px",cursor:"pointer",color:"#fff",fontSize:11,fontWeight:800}}>Chat</button>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <button onClick={()=>setShowHabitz(true)} style={{background:"#3b82f6",border:"none",borderRadius:16,padding:"4px 10px",cursor:"pointer",color:"#fff",fontSize:11,fontWeight:800}}>Habitz</button>
+          <button onClick={()=>setShowChat(true)} style={{display:"flex",alignItems:"center",gap:4,background:C.r,border:"none",borderRadius:16,padding:"4px 10px",cursor:"pointer",color:"#fff",fontSize:11,fontWeight:800}}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+            Scrypt Chat
+          </button>
           <button onClick={()=>setShowInbox(true)} style={{position:"relative",background:"none",border:"none",cursor:"pointer",padding:4}}>
             <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={D.text} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
             {inbox.filter(i=>!i.read).length>0&&<div style={{position:"absolute",top:2,right:2,width:8,height:8,borderRadius:"50%",background:C.r}}/>}
