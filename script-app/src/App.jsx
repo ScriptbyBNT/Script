@@ -2671,6 +2671,10 @@ function ScriptHabitz({ onBack, savedData, onSave }) {
                         {done&&<span style={{color:"#fff",fontWeight:900,fontSize:14}}>✓</span>}
                       </button>
                       <div style={{width:40,height:40,borderRadius:12,flexShrink:0,background:done?t.primaryLight:t.isDark?"#25253a":"#f8fafc",border:`1.5px solid ${done?t.primary:t.cardBorder}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{habit.icon}</div>
+                      <div style={{display:"flex",gap:4,flexShrink:0}}>
+                        <button onClick={()=>openEdit(habit)} style={{width:26,height:26,borderRadius:7,border:`1.5px solid ${t.cardBorder}`,background:t.isDark?"#25253a":"#f8fafc",cursor:"pointer",fontSize:13,display:"flex",alignItems:"center",justifyContent:"center"}}>✏️</button>
+                        <button onClick={()=>setHabits(h=>h.filter(x=>x.id!==habit.id))} style={{width:26,height:26,borderRadius:7,border:"1.5px solid #fca5a5",background:"#fef2f2",cursor:"pointer",color:"#ef4444",fontSize:14,fontWeight:700,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
+                      </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{fontWeight:700,fontSize:14,color:t.text,textDecoration:done?"line-through":"none"}}>{habit.name}</div>
                         {habit.reminder&&(
@@ -2680,11 +2684,7 @@ function ScriptHabitz({ onBack, savedData, onSave }) {
                           </div>
                         )}
                       </div>
-                      <div style={{display:"flex",gap:5,flexShrink:0}}>
-                        <button onClick={()=>setExpandedId(isOpen?null:habit.id)} style={{width:28,height:28,borderRadius:8,cursor:"pointer",border:`1.5px solid ${isOpen?t.primary:t.cardBorder}`,background:isOpen?t.primaryLight:t.isDark?"#25253a":"#f8fafc",color:isOpen?t.primary:t.textMuted,fontSize:10,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"inherit"}}>{isOpen?"▲":"▼"}</button>
-                        <button onClick={()=>openEdit(habit)} style={{width:28,height:28,borderRadius:8,border:`1.5px solid ${t.cardBorder}`,background:t.isDark?"#25253a":"#f8fafc",cursor:"pointer",fontSize:14,display:"flex",alignItems:"center",justifyContent:"center"}}>✏️</button>
-                        <button onClick={()=>setHabits(h=>h.filter(x=>x.id!==habit.id))} style={{width:28,height:28,borderRadius:8,border:"1.5px solid #fca5a5",background:"#fef2f2",cursor:"pointer",color:"#ef4444",fontSize:17,fontWeight:700,lineHeight:1,display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
-                      </div>
+                      <button onClick={()=>setExpandedId(isOpen?null:habit.id)} style={{width:28,height:28,borderRadius:8,cursor:"pointer",border:`1.5px solid ${isOpen?t.primary:t.cardBorder}`,background:isOpen?t.primaryLight:t.isDark?"#25253a":"#f8fafc",color:isOpen?t.primary:t.textMuted,fontSize:10,fontWeight:900,display:"flex",alignItems:"center",justifyContent:"center",fontFamily:"inherit",flexShrink:0}}>{isOpen?"▲":"▼"}</button>
                     </div>
                   </div>
                   {isOpen&&(
