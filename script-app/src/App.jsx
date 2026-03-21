@@ -2911,8 +2911,16 @@ function ScriptHabitz({ onBack, savedData, onSave }) {
             </div>
             <div style={{marginBottom:20}}>
               <div style={{fontSize:10,color:t.textMuted,marginBottom:8,fontWeight:700,letterSpacing:"0.5px"}}>REMINDER TIME</div>
-              <TimePicker value={form.reminder} onChange={val=>setForm(f=>({...f,reminder:val}))} t={t}/>
-              {form.reminder&&<button onClick={()=>setForm(f=>({...f,reminder:""}))} style={{marginTop:8,fontSize:11,color:t.textMuted,background:"none",border:"none",cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>Clear reminder</button>}
+              {!form.reminder ? (
+                <button onClick={()=>setForm(f=>({...f,reminder:"07:00"}))} style={{width:"100%",padding:"11px",borderRadius:10,border:`1.5px dashed ${t.cardBorder}`,background:"transparent",color:t.textMuted,fontSize:13,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                  + Set a reminder time
+                </button>
+              ) : (
+                <div>
+                  <TimePicker value={form.reminder} onChange={val=>setForm(f=>({...f,reminder:val}))} t={t}/>
+                  <button onClick={()=>setForm(f=>({...f,reminder:""}))} style={{marginTop:8,fontSize:11,color:t.textMuted,background:"none",border:"none",cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>Remove reminder</button>
+                </div>
+              )}
             </div>
             <button onClick={saveHabit} style={{width:"100%",padding:"15px",borderRadius:14,background:t.checkBg,border:"none",color:"#fff",fontSize:15,fontWeight:800,cursor:"pointer",fontFamily:"inherit"}}>
               {editHabit?"Save Changes":"Add Habit"}
@@ -3075,10 +3083,35 @@ function Settings({ user, dark, setDark, accent, onAccent, onClose }) {
             </>
           )}
           {tab==="notifications"&&(
-            <div style={{background:bg2,borderRadius:14,padding:"20px 16px",textAlign:"center"}}>
-              <div style={{fontSize:32,marginBottom:12}}>🔔</div>
-              <div style={{fontSize:16,fontWeight:800,color:txt,marginBottom:8}}>Notifications Coming Soon</div>
-              <div style={{fontSize:13,color:sub,lineHeight:1.6}}>Push notifications with exact-time alerts will be available in the Script native app. Stay tuned!</div>
+            <div style={{display:"flex",flexDirection:"column",gap:12}}>
+              <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
+                <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:12}}>Habitz Reminders</div>
+                <div style={{fontSize:13,color:sub,lineHeight:1.6,marginBottom:10}}>
+                  Habit reminder times are set inside Habitz when adding or editing a habit. To receive alerts, enable notifications in your browser/device settings.
+                </div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 0",borderTop:"1px solid "+bdr}}>
+                  <div>
+                    <div style={{fontSize:14,fontWeight:700,color:txt}}>🏃 Habitz Reminders</div>
+                    <div style={{fontSize:11,color:sub,marginTop:2}}>Set per-habit reminder times inside Habitz</div>
+                  </div>
+                  <button onClick={()=>{ if("Notification" in window){ Notification.requestPermission().then(p=>{ if(p==="granted") setMsg("✓ Habitz notifications enabled!"); else setErr("Blocked — enable in device Settings > Notifications > Safari/Browser"); }); } else setErr("Notifications not supported in this browser"); }} style={{background:C.r,border:"none",borderRadius:10,padding:"8px 14px",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                    Enable
+                  </button>
+                </div>
+              </div>
+              <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
+                <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>How it works</div>
+                <div style={{fontSize:13,color:sub,lineHeight:1.7}}>
+                  1. Open <strong style={{color:txt}}>Habitz</strong> and add or edit a habit<br/>
+                  2. Set a reminder time using the time picker<br/>
+                  3. Tap <strong style={{color:txt}}>"Set Reminder"</strong> inside the habit card<br/>
+                  4. Your browser will alert you at that time
+                </div>
+              </div>
+              <div style={{background:bg2,borderRadius:14,padding:"14px 16px"}}>
+                <div style={{fontSize:11,color:sub,fontWeight:700,letterSpacing:1,textTransform:"uppercase",marginBottom:8}}>Other Script Notifications</div>
+                <div style={{fontSize:13,color:sub,lineHeight:1.6}}>Push notifications for messages, shared items, and calendar reminders are available when Script is saved to your home screen (Add to Home Screen in Safari).</div>
+              </div>
             </div>
           )}
           {err&&<div style={{color:"#ff6060",fontSize:13,background:"rgba(255,80,80,.08)",borderRadius:10,padding:"10px 14px"}}>{err}</div>}
